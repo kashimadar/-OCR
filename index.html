@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>会計OCRアプリ</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif; background: #f0f2f5; color: #333; font-size: 14px; }
+
+    /* Header */
+    .header { background: #1a2942; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+    .header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
+    .api-key-group { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+    .api-key-group label { font-size: 0.85rem; white-space: nowrap; color: #cdd5e0; }
+    .api-key-group input { padding: 7px 10px; border: 1px solid #4a5568; border-radius: 5px; background: #2d3e55; color: #fff; width: 260px; font-size: 0.85rem; }
+    .api-key-group input::placeholder { color: #8899aa; }
+    .btn-save-key { padding: 7px 14px; background: #3b82f6; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 0.85rem; white-space: nowrap; transition: background 0.15s; }
+    .btn-save-key:hover { background: #2563eb; }
+
+    /* Tabs */
+    .tabs { background: #fff; border-bottom: 2px solid #e2e8f0; display: flex; padding: 0 20px; gap: 4px; }
+    .tab-btn { padding: 12px 22px; border: none; background: none; cursor: pointer; font-size: 0.95rem; color: #718096; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color 0.15s; font-weight: 500; }
+    .tab-btn:hover { color: #2d3748; }
+    .tab-btn.active { color: #1a2942; border-bottom-color: #3b82f6; font-weight: 700; }
+
+    /* Content */
+    .content { padding: 24px; max-width: 1100px; margin: 0 auto; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Upload Area */
+    .upload-area { display: block; border: 2px dashed #cbd5e0; border-radius: 10px; padding: 44px 24px; text-align: center; background: #fff; cursor: pointer; transition: border-color 0.2s, background 0.2s; user-select: none; }
+    .upload-area:hover, .upload-area.dragover { border-color: #3b82f6; background: #eff6ff; }
+    .upload-icon { font-size: 3rem; margin-bottom: 12px; display: block; }
+    .upload-area p { color: #718096; margin: 4px 0; line-height: 1.6; }
+    .upload-area strong { color: #2d3748; }
+    .upload-area input[type=file] { display: none; }
+    .btn-select-file { display: inline-block; margin-top: 14px; padding: 9px 22px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: background 0.15s; }
+    .btn-select-file:hover { background: #2563eb; }
+
+    /* Progress */
+    .progress-area { background: #fff; border-radius: 8px; padding: 18px 20px; margin: 14px 0; display: none; border: 1px solid #e2e8f0; }
+    .progress-text { font-size: 0.9rem; color: #4a5568; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    .progress-bar-wrap { background: #e2e8f0; border-radius: 99px; height: 7px; overflow: hidden; }
+    .progress-bar { background: #3b82f6; height: 7px; border-radius: 99px; transition: width 0.35s ease; width: 0%; }
+
+    /* Results */
+    .results-area { background: #fff; border-radius: 10px; padding: 20px; margin: 14px 0; display: none; border: 1px solid #e2e8f0; }
+    .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+    .results-header h3 { font-size: 1rem; color: #2d3748; }
+    .btn-download { padding: 8px 18px; background: #059669; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: background 0.15s; }
+    .btn-download:hover { background: #047857; }
+    .btn-clear { padding: 6px 14px; background: #e53e3e; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 0.85rem; transition: background 0.15s; }
+    .btn-clear:hover { background: #c53030; }
+    .action-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid #e2e8f0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    thead th { background: #f7fafc; padding: 9px 12px; text-align: left; border-bottom: 2px solid #e2e8f0; font-weight: 700; white-space: nowrap; color: #4a5568; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    tbody td { padding: 7px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #fafbfc; }
+    td[contenteditable=true] { outline: none; cursor: text; }
+    td[contenteditable=true]:focus { background: #fffbeb; box-shadow: inset 0 0 0 2px #f59e0b; }
+    tr.row-error { background: #fff5f5 !important; }
+    tr.row-error td { color: #c53030; }
+    .check-ok { color: #059669; font-weight: 700; }
+    .check-ng { color: #e53e3e; font-weight: 700; }
+
+    /* Alerts */
+    .alert { padding: 11px 16px; border-radius: 7px; margin: 10px 0; font-size: 0.9rem; line-height: 1.5; }
+    .alert-error { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; }
+    .alert-info { background: #ebf8ff; color: #2b6cb0; border: 1px solid #bee3f8; }
+    .alert-warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+
+    /* Spinner */
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2.5px solid #cbd5e0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.75s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Abort button */
+    .btn-abort { padding: 5px 12px; background: #e53e3e; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 0.82rem; font-weight: 700; white-space: nowrap; }
+    .btn-abort:hover { background: #c53030; }
+    /* Cost badge */
+    .cost-badge { font-size: 0.82rem; color: #718096; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 3px 10px; }
+    /* Misc */
+    .tip { font-size: 0.82rem; color: #a0aec0; margin-top: 4px; }
+    .count-badge { background: #3b82f6; color: #fff; border-radius: 99px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; margin-left: 6px; }
+  </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<div class="header">
+  <h1>📊 会計OCRアプリ</h1>
+  <div class="api-key-group">
+    <label for="apiKeyInput">Gemini API Key:</label>
+    <input type="password" id="apiKeyInput" placeholder="AIza...">
+    <button class="btn-save-key" onclick="saveApiKey()">保存</button>
+  </div>
+</div>
+
+<!-- ===== TABS ===== -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('receipt', this)">① 領収書</button>
+  <button class="tab-btn" onclick="switchTab('bankbook', this)">② 通帳</button>
+  <button class="tab-btn" onclick="switchTab('card', this)">③ カード明細</button>
+</div>
+
+<!-- ===== CONTENT ===== -->
+<div class="content">
+
+  <!-- ── Receipt Tab ── -->
+  <div id="tab-receipt" class="tab-panel active">
+    <label class="upload-area" id="receipt-drop" for="receipt-file">
+      <span class="upload-icon">🧾</span>
+      <p><strong>領収書 PDF</strong> をここにドロップ、またはクリックして選択</p>
+      <p class="tip">複数ページPDF対応 ／ 両面スキャン重複自動除外 ／ 和暦→西暦変換あり</p>
+      <span class="btn-select-file">ファイルを選択</span>
+      <input type="file" id="receipt-file" accept=".pdf,image/*" multiple onchange="handleReceiptUpload(event)">
+    </label>
+
+    <div id="receipt-progress" class="progress-area">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="progress-text" id="receipt-progress-text"><span class="spinner"></span><span id="receipt-progress-msg">処理中...</span></div>
+        <button class="btn-abort" onclick="abortProcessing()">■ 中止</button>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="receipt-progress-bar"></div></div>
+    </div>
+    <div id="receipt-error"></div>
+
+    <div id="receipt-results" class="results-area">
+      <div class="results-header">
+        <h3>抽出結果 <span class="count-badge" id="receipt-count">0</span></h3>
+        <span class="cost-badge" id="receipt-cost"></span>
+        <button class="btn-download" onclick="downloadCSV('receipt')">⬇ CSVダウンロード</button>
+      </div>
+      <div class="action-row">
+        <button class="btn-clear" onclick="clearResults('receipt')">クリア</button>
+        <span class="tip">セルをクリックして直接編集できます</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th></tr></thead>
+          <tbody id="receipt-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bankbook Tab ── -->
+  <div id="tab-bankbook" class="tab-panel">
+    <label class="upload-area" id="bankbook-drop" for="bankbook-file">
+      <span class="upload-icon">🏦</span>
+      <p><strong>通帳スキャン</strong> をここにドロップ、またはクリックして選択</p>
+      <p class="tip">画像 (JPG/PNG) ・PDF 対応 ／ 残高整合チェック付き</p>
+      <span class="btn-select-file">ファイルを選択</span>
+      <input type="file" id="bankbook-file" accept=".pdf,image/*" multiple onchange="handleBankbookUpload(event)">
+    </label>
+
+    <div id="bankbook-progress" class="progress-area">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="progress-text" id="bankbook-progress-text"><span class="spinner"></span><span id="bankbook-progress-msg">処理中...</span></div>
+        <button class="btn-abort" onclick="abortProcessing()">■ 中止</button>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="bankbook-progress-bar"></div></div>
+    </div>
+    <div id="bankbook-error"></div>
+
+    <div id="bankbook-results" class="results-area">
+      <div class="results-header">
+        <h3>抽出結果 <span class="count-badge" id="bankbook-count">0</span></h3>
+        <span class="cost-badge" id="bankbook-cost"></span>
+        <button class="btn-download" onclick="downloadCSV('bankbook')">⬇ CSVダウンロード</button>
+      </div>
+      <div id="bankbook-balance-info"></div>
+      <div class="action-row">
+        <button class="btn-clear" onclick="clearResults('bankbook')">クリア</button>
+        <button style="padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem" onclick="recheckBalance()">残高再チェック</button>
+        <span class="tip">出金・入金・残高を編集後、「残高再チェック」で再計算できます。</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
+          <tbody id="bankbook-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Card Tab ── -->
+  <div id="tab-card" class="tab-panel">
+    <label class="upload-area" id="card-drop" for="card-file">
+      <span class="upload-icon">💳</span>
+      <p><strong>カード明細</strong> をここにドロップ、またはクリックして選択</p>
+      <p class="tip">画像・PDF 対応 ／ 複数ページ可 ／ 合計照合チェック付き</p>
+      <span class="btn-select-file">ファイルを選択</span>
+      <input type="file" id="card-file" accept=".pdf,image/*" multiple onchange="handleCardUpload(event)">
+    </label>
+
+    <div id="card-progress" class="progress-area">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="progress-text" id="card-progress-text"><span class="spinner"></span><span id="card-progress-msg">処理中...</span></div>
+        <button class="btn-abort" onclick="abortProcessing()">■ 中止</button>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="card-progress-bar"></div></div>
+    </div>
+    <div id="card-error"></div>
+
+    <div id="card-results" class="results-area">
+      <div class="results-header">
+        <h3>抽出結果 <span class="count-badge" id="card-count">0</span></h3>
+        <span class="cost-badge" id="card-cost"></span>
+        <button class="btn-download" onclick="downloadCSV('card')">⬇ CSVダウンロード</button>
+      </div>
+      <div id="card-summary"></div>
+      <div class="action-row">
+        <button class="btn-clear" onclick="clearResults('card')">クリア</button>
+        <span class="tip">セルをクリックして直接編集できます</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>日付</th><th>出金 (円)</th><th>摘要 / 利用先</th></tr></thead>
+          <tbody id="card-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- ===== SCRIPTS ===== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+'use strict';
+
+// ─── Config ───────────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const GEMINI_MODEL    = 'gemini-2.5-flash';
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const REQUEST_DELAY   = 300;
+// Gemini 2.5 Flash 料金 (USD/1M tokens) ※ Standard Tier
+// 参照: https://ai.google.dev/gemini-api/docs/pricing
+const PRICE_INPUT  = 0.30;  // テキスト・画像・動画
+const PRICE_OUTPUT = 1.00;  // 出力（Thinking無効時）
+const JPY_RATE     = 150;   // 円換算レート（概算）
+
+let abortFlag = false;
+let tabCost   = { receipt: 0, bankbook: 0, card: 0 }; // USD
+
+function abortProcessing() {
+  abortFlag = true;
+}
+
+function resetAbort() {
+  abortFlag = false;
+}
+
+function addCost(tab, inputTokens, outputTokens) {
+  tabCost[tab] += (inputTokens * PRICE_INPUT + outputTokens * PRICE_OUTPUT) / 1_000_000;
+}
+
+function formatCost(usd) {
+  const jpy = Math.round(usd * JPY_RATE);
+  if (usd < 0.001) return '< $0.001 (< ¥1)';
+  return `$${usd.toFixed(4)} (約¥${jpy})`;
+}
+
+function updateCostBadge(tab) {
+  const el = document.getElementById(tab + '-cost');
+  if (el) el.innerHTML = `API利用料: ${formatCost(tabCost[tab])} <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" style="color:#3b82f6;font-size:0.78rem">料金表</a>`;
+}
+
+// ─── Startup ──────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('gemini_api_key');
+  if (saved) document.getElementById('apiKeyInput').value = saved;
+
+  setupDrop('receipt-drop',  'receipt-file',  handleReceiptUpload);
+  setupDrop('bankbook-drop', 'bankbook-file', handleBankbookUpload);
+  setupDrop('card-drop',     'card-file',     handleCardUpload);
+});
+
+function saveApiKey() {
+  const k = document.getElementById('apiKeyInput').value.trim();
+  if (!k) { alert('APIキーを入力してください'); return; }
+  localStorage.setItem('gemini_api_key', k);
+  const btn = document.querySelector('.btn-save-key');
+  const orig = btn.textContent;
+  btn.textContent = '✓ 保存済';
+  setTimeout(() => btn.textContent = orig, 1500);
+}
+
+function getApiKey() {
+  return localStorage.getItem('gemini_api_key') ||
+         document.getElementById('apiKeyInput').value.trim();
+}
+
+// ─── Tab switching ────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ─── Drag & Drop ─────────────────────────────────────────
+function setupDrop(dropId, fileId, handler) {
+  const zone = document.getElementById(dropId);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('dragover'); });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handler({ target: { files: e.dataTransfer.files } });
+  });
+}
+
+// ─── PDF → base64 images ─────────────────────────────────
+async function pdfToImages(file, scale = 2.0) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const images = [];
+  for (let pg = 1; pg <= pdf.numPages; pg++) {
+    const page     = await pdf.getPage(pg);
+    const viewport = page.getViewport({ scale });
+    const canvas   = document.createElement('canvas');
+    canvas.width   = viewport.width;
+    canvas.height  = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    images.push(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
+  }
+  return images;
+}
+
+async function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+function fileMime(file) {
+  if (file.type) return file.type;
+  const ext = file.name.toLowerCase().split('.').pop();
+  return ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+            gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf' })[ext] || 'image/jpeg';
+}
+
+async function fileToImages(file) {
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if (isPdf) {
+    const imgs = await pdfToImages(file);
+    return imgs.map(d => ({ data: d, mime: 'image/jpeg' }));
+  }
+  const data = await fileToBase64(file);
+  return [{ data, mime: fileMime(file) }];
+}
+
+// ─── Gemini API ───────────────────────────────────────────
+async function callGemini(prompt, imageData, imageMime, retries = 3, tab = null) {
+  const key = getApiKey();
+  if (!key) throw new Error('Gemini APIキーが未設定です。ヘッダーのAPIキー欄に入力して「保存」してください。');
+
+  const body = {
+    contents: [{ parts: [
+      { text: prompt },
+      { inline_data: { mime_type: imageMime, data: imageData } }
+    ]}],
+    generationConfig: { temperature: 0.1, thinkingConfig: { thinkingBudget: 0 } }
+  };
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(`${GEMINI_ENDPOINT}?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = err.error?.message || `HTTP ${res.status}`;
+      if (res.status === 401 || res.status === 403) throw new Error(`APIキーが無効または権限がありません: ${msg}`);
+      // Retryable errors: rate limit or high demand
+      const isRetryable = res.status === 429 || res.status === 503 || msg.includes('high demand') || msg.includes('overloaded');
+      if (isRetryable && attempt < retries) {
+        const wait = (attempt + 1) * 5000;
+        await sleep(wait);
+        continue;
+      }
+      throw new Error(`Gemini APIエラー: ${msg}`);
+    }
+
+    const data = await res.json();
+
+    // トークン集計（Thinking トークンも出力に含める）
+    const usage = data.usageMetadata;
+    if (usage && tab) {
+      const outTokens = (usage.candidatesTokenCount || 0) + (usage.thoughtsTokenCount || 0);
+      addCost(tab, usage.promptTokenCount || 0, outTokens);
+      updateCostBadge(tab);
+    }
+
+    // Safety block check
+    const finishReason = data.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
+      throw new Error(`Geminiが応答をブロックしました (${finishReason})`);
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!text) throw new Error('Geminiから空の応答が返されました');
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error(`JSONが見つかりません。応答: ${text.slice(0, 100)}`);
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      throw new Error(`JSON解析失敗: ${e.message} / 応答: ${text.slice(0, 100)}`);
+    }
+  }
+}
+
+// ─── Progress helpers ─────────────────────────────────────
+function showProgress(tab, msg, pct) {
+  const area = document.getElementById(tab + '-progress');
+  area.style.display = 'block';
+  document.getElementById(tab + '-progress-msg').textContent = msg;
+  document.getElementById(tab + '-progress-bar').style.width = pct + '%';
+}
+function hideProgress(tab) {
+  document.getElementById(tab + '-progress').style.display = 'none';
+}
+function showError(tab, msg) {
+  document.getElementById(tab + '-error').innerHTML =
+    `<div class="alert alert-error">⚠ ${esc(msg)}</div>`;
+}
+function clearError(tab) {
+  document.getElementById(tab + '-error').innerHTML = '';
+}
+
+// ─── Utilities ────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function num(v) { return v != null && v !== '' ? v : ''; }
+
+function bindEditable(tbody, dataArray) {
+  tbody.querySelectorAll('td[contenteditable=true]').forEach(td => {
+    td.addEventListener('blur', () => {
+      const idx   = parseInt(td.dataset.idx);
+      const field = td.dataset.field;
+      if (dataArray[idx]) dataArray[idx][field] = td.textContent.trim();
+    });
+  });
+}
+
+// ─── CSV export ───────────────────────────────────────────
+function csvField(v) {
+  const s = String(v ?? '');
+  return (s.includes(',') || s.includes('"') || s.includes('\n'))
+    ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function downloadFile(content, filename) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FEATURE ①  RECEIPT
+// ═══════════════════════════════════════════════════════════
+const RECEIPT_PROMPT = `以下のレシート・領収書画像から情報を抽出し、JSON形式のみで返してください。
+
+{
+  "date": "日付 YYYY/MM/DD形式、和暦は西暦変換（令和7=2025、令和6=2024、令和5=2023、令和4=2022、令和3=2021、令和2=2020、令和1=2019、平成N年=1988+N年）",
+  "store_name": "店名（判読不能は「（手書き 店名不明）」）",
+  "purpose": "支払内容・但し書き。印字・手書きを問わず「○○代」「○○費」等の記載があれば抽出（例：飲食代、交通費、消耗品代）。品目が混在して一言で表せない場合・記載なければnull",
+  "renban": "一連No.数字のみ、なければnull",
+  "invoice_number": "T+13桁、なければnull",
+  "is_nontax": "非課税取引（医療費・郵便切手・土地等）の場合はtrue、それ以外はfalse",
+  "amount_10": "10%対象税込金額 数値のみ、なければnull",
+  "amount_8": "8%対象税込金額 数値のみ、なければnull",
+  "amount_total": "合計税込金額 数値のみ"
+}
+
+注意：
+- 金額はカンマなし数値のみ
+- 税率区別が明示されていない場合はamount_totalのみ、amount_10/8はnull
+- レシート以外のページはすべてnullで返す`;
+
+let receiptData = [];
+
+function receiptToRows(result) {
+  // 金額・日付がすべてnull → レシートなし
+  if (result.date == null && result.amount_total == null &&
+      result.amount_10 == null && result.amount_8 == null) return null;
+
+  const store        = result.store_name ?? '';
+  const purpose      = result.purpose ? result.purpose.trim() : null;
+  const renban       = result.renban != null ? String(result.renban) : null;
+  const invoiceClass = result.invoice_number ? '' : '区分記載';
+  const isMixed      = result.amount_10 != null && result.amount_8 != null;
+  const isNontax     = !!result.is_nontax;
+  const date         = result.date ?? '';
+
+  function desc(taxLabel) {
+    let s = store;
+    if (purpose) s += ` ${purpose}`;
+    if (isMixed) {
+      s += ` ${taxLabel}分`;
+      if (renban) s += ` 一連${renban}`;
+    }
+    if (isNontax) s += ' 非課税';
+    return s;
+  }
+
+  if (isMixed) {
+    return [
+      { date, description: desc('10%'), amount: result.amount_10, reduced_tax: '',  invoice_class: invoiceClass },
+      { date, description: desc('8%'),  amount: result.amount_8,  reduced_tax: '※', invoice_class: invoiceClass }
+    ];
+  }
+  return [
+    { date, description: desc(''), amount: result.amount_total, reduced_tax: '', invoice_class: invoiceClass }
+  ];
+}
+
+async function handleReceiptUpload(event) {
+  const files = Array.from(event.target.files);
+  event.target.value = '';
+  if (!files.length) return;
+
+  clearError('receipt');
+  receiptData = [];
+  tabCost.receipt = 0;
+  resetAbort();
+
+  try {
+    const allImgs = [];
+    for (const f of files) {
+      showProgress('receipt', `ファイル読み込み中: ${f.name}`, 5);
+      const imgs = await fileToImages(f);
+      allImgs.push(...imgs);
+    }
+
+    const total = allImgs.length;
+    if (total === 0) throw new Error('画像を取得できませんでした');
+
+    const isLarge   = total >= 50;
+    let lastKey     = null;
+    const pageErrors = [];
+
+    for (let i = 0; i < total; i++) {
+      if (abortFlag) break;
+
+      const pct = Math.round(10 + ((i + 1) / total) * 85);
+      const msg = isLarge && i < 3
+        ? `構造確認中 ${i + 1} / 3 ページ...`
+        : `${i + 1} / ${total} ページ処理中...`;
+      showProgress('receipt', msg, pct);
+
+      try {
+        const result = await callGemini(RECEIPT_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'receipt');
+        const rows = receiptToRows(result);
+        if (!rows) { if (i < total - 1) await sleep(REQUEST_DELAY); continue; }
+
+        // 両面スキャン重複除外（日付・合計金額・店名が同一の連続ページ）
+        const key = `${result.date}_${result.store_name}_${result.amount_total ?? result.amount_10}`;
+        if (key === lastKey) { if (i < total - 1) await sleep(REQUEST_DELAY); continue; }
+        lastKey = key;
+
+        receiptData.push(...rows);
+      } catch (e) {
+        if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
+        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
+      }
+
+      if (i < total - 1) await sleep(REQUEST_DELAY);
+    }
+
+    showProgress('receipt', abortFlag ? '中止しました' : '完了', 100);
+    await sleep(400);
+    hideProgress('receipt');
+    if (pageErrors.length) showError('receipt', pageErrors.join('\n'));
+    renderReceiptTable();
+    updateCostBadge('receipt');
+
+  } catch (e) {
+    hideProgress('receipt');
+    showError('receipt', e.message);
+  }
+}
+
+function renderReceiptTable() {
+  const tbody = document.getElementById('receipt-tbody');
+  tbody.innerHTML = receiptData.map((r, i) => `
+    <tr>
+      <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="reduced_tax">${esc(r.reduced_tax)}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="invoice_class">${esc(r.invoice_class)}</td>
+    </tr>`).join('');
+
+  bindEditable(tbody, receiptData);
+  document.getElementById('receipt-count').textContent = receiptData.length;
+  document.getElementById('receipt-results').style.display = 'block';
+}
+
+function downloadCSVReceipt() {
+  const BOM = '﻿';
+  let csv = BOM + '日付,摘要,金額,軽減税率,請求書区分\n';
+  receiptData.forEach(r => {
+    csv += [r.date, r.description, r.amount ?? '', r.reduced_tax, r.invoice_class].map(csvField).join(',') + '\n';
+  });
+  downloadFile(csv, '領収書.csv');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FEATURE ②  BANKBOOK
+// ═══════════════════════════════════════════════════════════
+const BANKBOOK_PROMPT = `あなたは会計書類OCRの専門家です。この通帳の画像から全ての取引行を抽出してください。
+
+必ず以下のJSON形式だけで回答してください（説明文・コードブロック不要）:
+{
+  "items": [
+    {
+      "date": "YYYY/MM/DD",
+      "withdrawal": 数値またはnull,
+      "deposit": 数値またはnull,
+      "description": "摘要",
+      "balance": 数値またはnull
+    }
+  ]
+}
+
+抽出ルール:
+- date: 和暦を西暦変換（令和7=2025、令和6=2024等。月日のみなら前の行の年を引き継ぐ）
+- withdrawal: お支払金額・出金（ない行はnull）
+- deposit: お預り金額・入金（ない行はnull）
+- balance: 差引残高の数値。【重要】差引残高列が空欄の行は必ずnullにすること。同じ日付で複数行ある場合、残高が印字されているのは通常その日の最後の行のみ。「RT206」「R7」「LT166」などの記号・店番号欄の値を残高と誤読しないこと。1つの取引が物理的に2行にわたる場合（1行目に入出金額・2行目に残高のみ）は、2行をまとめて1つのitemとして返し、入出金額と残高を同じitemに含めること。
+- description: 摘要・取引内容
+- 全取引行を漏らさず抽出すること
+- 数値はカンマなしの整数値
+- 日付・入金・出金・残高がすべて空欄の行（通帳の物理的な空白行）はitemsに含めないこと
+- 入金・出金がともにない行（前月繰越・ページ繰越など残高のみの行、摘要のみの行）もitemsに含めないこと`;
+
+let bankbookData = [];
+let bankbookFileNames = [];
+
+async function handleBankbookUpload(event) {
+  const files = Array.from(event.target.files);
+  event.target.value = '';
+  if (!files.length) return;
+
+  clearError('bankbook');
+  bankbookData = [];
+  bankbookFileNames = files.map(f => f.name);
+  tabCost.bankbook = 0;
+  resetAbort();
+
+  try {
+    const allImgs = [];
+    for (const f of files) {
+      showProgress('bankbook', `ファイル読み込み中: ${f.name}`, 5);
+      const imgs = await fileToImages(f);
+      allImgs.push(...imgs);
+    }
+
+    const total = allImgs.length;
+    if (total === 0) throw new Error('画像を取得できませんでした');
+
+    const pageErrors = [];
+    for (let i = 0; i < total; i++) {
+      const pct = Math.round(10 + ((i + 1) / total) * 85);
+      showProgress('bankbook', `${i + 1} / ${total} ページ処理中...`, pct);
+
+      if (abortFlag) break;
+      try {
+        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook');
+        for (const item of (result.items || [])) {
+          const hasWd  = item.withdrawal != null;
+          const hasDep = item.deposit    != null;
+          const hasBal = item.balance    != null;
+          // 入出金がない行（繰越行・空白行・残高のみ行）→ CSVに出力しない・残高も無視
+          if (!hasWd && !hasDep) continue;
+          bankbookData.push({
+            date:        item.date        ?? '',
+            withdrawal:  hasWd  ? item.withdrawal  : '',
+            deposit:     hasDep ? item.deposit     : '',
+            description: item.description ?? '',
+            balance:     hasBal ? item.balance     : ''
+          });
+        }
+      } catch (e) {
+        if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
+        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
+      }
+
+      if (i < total - 1) await sleep(REQUEST_DELAY);
+    }
+
+    const errCount = runBalanceCheck();
+
+    showProgress('bankbook', abortFlag ? '中止しました' : '完了', 100);
+    await sleep(400);
+    hideProgress('bankbook');
+    if (pageErrors.length) showError('bankbook', pageErrors.join('\n'));
+    renderBankbookTable(errCount);
+    updateCostBadge('bankbook');
+
+  } catch (e) {
+    hideProgress('bankbook');
+    showError('bankbook', e.message);
+  }
+}
+
+function runBalanceCheck() {
+  bankbookData.forEach(r => r.check = '');
+
+  let running       = null; // 累積残高（null = 基準値未確立）
+  let intervalStart = 0;    // 現区間の開始インデックス
+  let errCount      = 0;
+
+  for (let i = 0; i < bankbookData.length; i++) {
+    const row = bankbookData[i];
+    const dep = Math.round(parseFloat(row.deposit)    || 0);
+    const wd  = Math.round(parseFloat(row.withdrawal) || 0);
+
+    // 基準値確立済みなら入出金を累積
+    // チェック式: 前行基準残高 + 入金 - 出金 = 当行残高
+    if (running !== null) {
+      running = running + dep - wd;
+    }
+
+    // 残高なし → 照合せず次の行へ（次の残高行で区間ごとチェック）
+    if (row.balance === '' || row.balance == null) continue;
+
+    const actual = Math.round(parseFloat(row.balance));
+
+    // 基準値未確立 → この行の残高を基準値に設定してチェックなし
+    if (running === null) {
+      running       = actual;
+      intervalStart = i + 1;
+      continue;
+    }
+
+    // 区間チェック（intervalStart 〜 i 行を一括判定）
+    if (running === actual) {
+      for (let j = intervalStart; j <= i; j++) bankbookData[j].check = 'OK';
+    } else {
+      const label = `残高不一致（計算値：${running.toLocaleString()}円、通帳値：${actual.toLocaleString()}円）`;
+      for (let j = intervalStart; j <= i; j++) bankbookData[j].check = label;
+      errCount++;
+    }
+
+    // 照合後、通帳の残高を新たな基準値に更新（不一致でも通帳値を採用し連鎖防止）
+    running       = actual;
+    intervalStart = i + 1;
+  }
+
+  return errCount;
+}
+
+function renderBankbookTable(errCount = 0) {
+  // ファイル名表示
+  const infoEl = document.getElementById('bankbook-balance-info');
+  const fileLabel = bankbookFileNames.length
+    ? `<span style="color:#4a5568">📄 ${bankbookFileNames.map(esc).join('、')}</span>`
+    : '';
+  const balanceLabel = bankbookData.some(r => r.balance !== '')
+    ? (errCount === 0
+        ? `<span style="color:#059669;font-weight:700">✓ 残高一致</span>`
+        : `<span style="color:#e53e3e;font-weight:700">⚠ 残高不一致 ${errCount}件</span>`)
+    : '';
+  infoEl.innerHTML = (fileLabel || balanceLabel)
+    ? `<div style="display:flex;gap:16px;align-items:center;padding:10px 0;font-size:0.9rem">${fileLabel}${balanceLabel}</div>`
+    : '';
+
+  const tbody = document.getElementById('bankbook-tbody');
+  tbody.innerHTML = bankbookData.map((r, i) => {
+    const isNG = r.check && r.check.startsWith('残高不一致');
+    const checkCell = r.check === 'OK'
+      ? '<span class="check-ok">OK</span>'
+      : isNG ? `<span class="check-ng">${esc(r.check)}</span>` : '';
+    return `<tr class="${isNG ? 'row-error' : ''}">
+      <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="withdrawal">${esc(String(r.withdrawal))}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="deposit">${esc(String(r.deposit))}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="balance">${esc(String(r.balance))}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
+      <td>${checkCell}</td>
+    </tr>`;
+  }).join('');
+
+  bindEditable(tbody, bankbookData);
+  document.getElementById('bankbook-count').textContent = bankbookData.length;
+  document.getElementById('bankbook-results').style.display = 'block';
+}
+
+function downloadCSVBankbook() {
+  const BOM = '﻿';
+  let csv = BOM + '日付,出金,入金,残高,摘要\n';
+  bankbookData.forEach(r => {
+    csv += [r.date, r.withdrawal, r.deposit, r.balance, r.description].map(csvField).join(',') + '\n';
+  });
+  downloadFile(csv, '通帳.csv');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FEATURE ③  CARD STATEMENT
+// ═══════════════════════════════════════════════════════════
+const CARD_PROMPT = `あなたは会計書類OCRの専門家です。このカード明細の画像から全ての利用明細を抽出してください。
+
+必ず以下のJSON形式だけで回答してください（説明文・コードブロック不要）:
+{
+  "items": [
+    {
+      "date": "YYYY/MM/DD",
+      "amount": 数値,
+      "description": "利用先・店名"
+    }
+  ],
+  "total": 数値またはnull
+}
+
+抽出ルール:
+- date: 和暦を西暦変換、月日のみなら文脈から年を補完
+- amount: 利用金額（整数値、カンマなし）
+- description: 利用先・店名・摘要
+- total: ご請求合計・明細合計が記載されていれば数値、なければnull
+- 全ての個別利用明細行を漏らさず抽出すること
+
+【items に絶対に含めてはいけない行】
+- 「今月ご利用額」「ご請求金額」「ご請求合計」「合計額」「小計」「合計」を含む行
+- 氏名（〇〇様）と金額だけの行（例：「加藤 智之 様 今月ご利用額」）
+- 「その他ご請求分」「繰越残高」「お支払金額」等の請求サマリ行
+- ヘッダー行・説明行・注記行
+これらは total フィールドにのみ反映すること
+
+【摘要の簡略化ルール】
+- ETCの場合：カード番号（ETC NO）・入口・出口・道路の重複情報を除き「ETC {道路会社名}」のみにすること（例：「ETC 首都高速道路」「ETC 東日本高速道路 関東支社」）`;
+
+let cardData   = [];
+let cardTotals = [];
+
+async function handleCardUpload(event) {
+  const files = Array.from(event.target.files);
+  event.target.value = '';
+  if (!files.length) return;
+
+  clearError('card');
+  cardData   = [];
+  cardTotals = [];
+  tabCost.card = 0;
+  resetAbort();
+
+  try {
+    const allImgs = [];
+    for (const f of files) {
+      showProgress('card', `ファイル読み込み中: ${f.name}`, 5);
+      const imgs = await fileToImages(f);
+      allImgs.push(...imgs);
+    }
+
+    const total = allImgs.length;
+    if (total === 0) throw new Error('画像を取得できませんでした');
+
+    const pageErrors = [];
+    for (let i = 0; i < total; i++) {
+      const pct = Math.round(10 + ((i + 1) / total) * 85);
+      showProgress('card', `${i + 1} / ${total} ページ処理中...`, pct);
+
+      if (abortFlag) break;
+      try {
+        const result = await callGemini(CARD_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'card');
+        for (const item of (result.items || [])) {
+          if (!item.date && item.amount == null) continue;
+          // 合計・サマリ行を除外
+          const d = item.description ?? '';
+          if (/今月ご利用額|ご請求金額|ご請求合計|合計額|その他ご請求分|繰越残高|お支払金額/.test(d)) continue;
+          if (/^.{1,10}様/.test(d)) continue; // 「〇〇様」で始まる行
+          cardData.push({
+            date:        item.date        ?? '',
+            amount:      item.amount      != null ? item.amount : '',
+            description: item.description ?? ''
+          });
+        }
+        if (result.total != null) cardTotals.push(result.total);
+      } catch (e) {
+        if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
+        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
+      }
+
+      if (i < total - 1) await sleep(REQUEST_DELAY);
+    }
+
+    showProgress('card', abortFlag ? '中止しました' : '完了', 100);
+    await sleep(400);
+    hideProgress('card');
+    if (pageErrors.length) showError('card', pageErrors.join('\n'));
+    renderCardTable();
+    updateCostBadge('card');
+
+  } catch (e) {
+    hideProgress('card');
+    showError('card', e.message);
+  }
+}
+
+function renderCardTable() {
+  const tbody = document.getElementById('card-tbody');
+  tbody.innerHTML = cardData.map((r, i) => `
+    <tr>
+      <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount))}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
+    </tr>`).join('');
+
+  bindEditable(tbody, cardData);
+
+  // Summary check
+  const sumEl = document.getElementById('card-summary');
+  if (cardTotals.length > 0) {
+    const extracted = cardData.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+    const reported  = cardTotals[cardTotals.length - 1];
+    const diff      = Math.abs(extracted - reported);
+    const match     = diff < 1;
+    sumEl.innerHTML = `<div class="alert ${match ? 'alert-info' : 'alert-warn'}">
+      明細合計: <strong>¥${extracted.toLocaleString()}</strong> ／ 請求合計: <strong>¥${reported.toLocaleString()}</strong>
+      → ${match ? '<span style="color:#059669">✓ 一致</span>' : `<span style="color:#e53e3e">⚠ 差異 ¥${diff.toLocaleString()}</span>`}
+    </div>`;
+  } else {
+    sumEl.innerHTML = '';
+  }
+
+  document.getElementById('card-count').textContent = cardData.length;
+  document.getElementById('card-results').style.display = 'block';
+}
+
+function downloadCSVCard() {
+  const BOM = '﻿';
+  let csv = BOM + '日付,出金,摘要\n';
+  cardData.forEach(r => {
+    csv += [r.date, r.amount, r.description].map(csvField).join(',') + '\n';
+  });
+  downloadFile(csv, 'カード明細.csv');
+}
+
+// ─── Unified CSV dispatch ─────────────────────────────────
+function downloadCSV(tab) {
+  if (tab === 'receipt')  return downloadCSVReceipt();
+  if (tab === 'bankbook') return downloadCSVBankbook();
+  if (tab === 'card')     return downloadCSVCard();
+}
+
+function recheckBalance() {
+  if (!bankbookData.length) return;
+  const errCount = runBalanceCheck();
+  renderBankbookTable(errCount);
+}
+
+// ─── Clear results ────────────────────────────────────────
+function clearResults(tab) {
+  clearError(tab);
+  if (tab === 'receipt') {
+    receiptData = [];
+    document.getElementById('receipt-results').style.display = 'none';
+  } else if (tab === 'bankbook') {
+    bankbookData = [];
+    document.getElementById('bankbook-results').style.display = 'none';
+    document.getElementById('bankbook-balance-info').innerHTML = '';
+    const rb = document.getElementById('btn-recheck');
+    if (rb) rb.remove();
+  } else if (tab === 'card') {
+    cardData = []; cardTotals = [];
+    document.getElementById('card-results').style.display = 'none';
+    document.getElementById('card-summary').innerHTML = '';
+  }
+}
+</script>
+</body>
+</html>
