@@ -44,6 +44,7 @@
     .progress-text { font-size: 0.9rem; color: #4a5568; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
     .progress-bar-wrap { background: #e2e8f0; border-radius: 99px; height: 7px; overflow: hidden; }
     .progress-bar { background: #3b82f6; height: 7px; border-radius: 99px; transition: width 0.35s ease; width: 0%; }
+    .progress-remaining { font-size: 0.85rem; color: #718096; margin-top: 6px; min-height: 1.2em; }
 
     /* Results */
     .results-area { background: #fff; border-radius: 10px; padding: 20px; margin: 14px 0; display: none; border: 1px solid #e2e8f0; }
@@ -66,8 +67,15 @@
     td[contenteditable=true]:focus { background: #fffbeb; box-shadow: inset 0 0 0 2px #f59e0b; }
     tr.row-error { background: #fff5f5 !important; }
     tr.row-error td { color: #c53030; }
+    tr.row-review { background: #fff0f0 !important; }
+    tr.row-review td { color: #c53030; }
+    tr.row-duplicate { background: #fffde7 !important; }
     .check-ok { color: #059669; font-weight: 700; }
     .check-ng { color: #e53e3e; font-weight: 700; }
+    .btn-del-row { padding: 2px 8px; background: #e53e3e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
+    .btn-del-row:hover { background: #c53030; }
+    .flag-review { font-size: 0.75rem; background: #e53e3e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
+    .flag-dup { font-size: 0.75rem; background: #d69e2e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
 
     /* Alerts */
     .alert { padding: 11px 16px; border-radius: 7px; margin: 10px 0; font-size: 0.9rem; line-height: 1.5; }
@@ -142,7 +150,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th></tr></thead>
+          <thead><tr><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th><th>操作</th></tr></thead>
           <tbody id="receipt-tbody"></tbody>
         </table>
       </div>
@@ -151,6 +159,12 @@
 
   <!-- ── Bankbook Tab ── -->
   <div id="tab-bankbook" class="tab-panel">
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <label style="font-size:0.88rem;color:#4a5568;font-weight:600;white-space:nowrap;">🗓 基準年（通帳の年度表記の基準）</label>
+      <input type="number" id="bankbook-base-year" value="2025" min="2000" max="2099"
+        style="width:90px;padding:5px 8px;border:1px solid #cbd5e0;border-radius:5px;font-size:0.9rem;">
+      <span class="tip">07→基準年、08→基準年+1 として変換。例：基準年2025 → 07-12-25 = 2025/12/25</span>
+    </div>
     <label class="upload-area" id="bankbook-drop" for="bankbook-file">
       <span class="upload-icon">🏦</span>
       <p><strong>通帳スキャン</strong> をここにドロップ、またはクリックして選択</p>
@@ -241,7 +255,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 const GEMINI_MODEL    = 'gemini-2.5-flash';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-const REQUEST_DELAY   = 300;
+const CONCURRENCY     = 10;
 // Gemini 2.5 Flash 料金 (USD/1M tokens) ※ Standard Tier
 // 参照: https://ai.google.dev/gemini-api/docs/pricing
 const PRICE_INPUT  = 0.30;  // テキスト・画像・動画
@@ -257,6 +271,20 @@ function abortProcessing() {
 
 function resetAbort() {
   abortFlag = false;
+}
+
+// 並列実行ヘルパー（結果は元の順序を保持）
+async function runWithConcurrency(tasks, limit) {
+  const results = new Array(tasks.length);
+  let nextIdx = 0;
+  async function worker() {
+    while (nextIdx < tasks.length) {
+      const i = nextIdx++;
+      results[i] = await tasks[i]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results;
 }
 
 function addCost(tab, inputTokens, outputTokens) {
@@ -320,20 +348,36 @@ function setupDrop(dropId, fileId, handler) {
 }
 
 // ─── PDF → base64 images ─────────────────────────────────
+function isBlankCanvas(canvas, threshold = 250) {
+  const ctx  = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const step = Math.max(1, Math.floor(Math.sqrt(w * h / 8000)));
+  const data = ctx.getImageData(0, 0, w, h).data;
+  let sum = 0, count = 0;
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const idx = (y * w + x) * 4;
+      sum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      count++;
+    }
+  }
+  return count > 0 && (sum / count) >= threshold;
+}
+
 async function pdfToImages(file, scale = 2.0) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const images = [];
-  for (let pg = 1; pg <= pdf.numPages; pg++) {
-    const page     = await pdf.getPage(pg);
+  const results = await Promise.all(Array.from({ length: pdf.numPages }, async (_, i) => {
+    const page     = await pdf.getPage(i + 1);
     const viewport = page.getViewport({ scale });
     const canvas   = document.createElement('canvas');
     canvas.width   = viewport.width;
     canvas.height  = viewport.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    images.push(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
-  }
-  return images;
+    if (isBlankCanvas(canvas)) return null;
+    return canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+  }));
+  return results.filter(d => d !== null);
 }
 
 async function fileToBase64(file) {
@@ -363,7 +407,7 @@ async function fileToImages(file) {
 }
 
 // ─── Gemini API ───────────────────────────────────────────
-async function callGemini(prompt, imageData, imageMime, retries = 3, tab = null) {
+async function callGemini(prompt, imageData, imageMime, retries = 2, tab = null) {
   const key = getApiKey();
   if (!key) throw new Error('Gemini APIキーが未設定です。ヘッダーのAPIキー欄に入力して「保存」してください。');
 
@@ -375,6 +419,7 @@ async function callGemini(prompt, imageData, imageMime, retries = 3, tab = null)
     generationConfig: { temperature: 0.1, thinkingConfig: { thinkingBudget: 0 } }
   };
 
+  let consecutive429 = 0;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = await fetch(`${GEMINI_ENDPOINT}?key=${key}`, {
       method: 'POST',
@@ -386,21 +431,28 @@ async function callGemini(prompt, imageData, imageMime, retries = 3, tab = null)
       const err = await res.json().catch(() => ({}));
       const msg = err.error?.message || `HTTP ${res.status}`;
       if (res.status === 401 || res.status === 403) throw new Error(`APIキーが無効または権限がありません: ${msg}`);
-      // Retryable errors: rate limit or high demand
       const isRetryable = res.status === 429 || res.status === 503 || msg.includes('high demand') || msg.includes('overloaded');
       if (isRetryable && attempt < retries) {
-        const waitSec = (attempt + 1) * 5;
-        for (let s = waitSec; s > 0; s--) {
-          if (tab) {
-            const msgEl = document.getElementById(tab + '-progress-msg');
-            if (msgEl) msgEl.textContent = `高負荷のためリトライ待機中... ${s}秒`;
+        if (res.status === 429) {
+          consecutive429++;
+          if (consecutive429 >= 3) {
+            const msgEl = tab ? document.getElementById(tab + '-progress-msg') : null;
+            for (let s = 2; s > 0; s--) {
+              if (msgEl) msgEl.textContent = `レート制限 リトライ待機... ${s}秒`;
+              await sleep(500);
+              if (msgEl) msgEl.textContent = `レート制限 リトライ待機... ${s - 0.5}秒`;
+              await sleep(500);
+            }
+            consecutive429 = 0;
           }
-          await sleep(1000);
+        } else {
+          consecutive429 = 0;
         }
         continue;
       }
       throw new Error(`Gemini APIエラー: ${msg}`);
     }
+    consecutive429 = 0;
 
     const data = await res.json();
 
@@ -487,12 +539,13 @@ function downloadFile(content, filename) {
 const RECEIPT_PROMPT = `以下のレシート・領収書画像から情報を抽出し、JSON形式のみで返してください。
 
 {
-  "date": "日付 YYYY/MM/DD形式、和暦は西暦変換（令和7=2025、令和6=2024、令和5=2023、令和4=2022、令和3=2021、令和2=2020、令和1=2019、平成N年=1988+N年）",
+  "date": "日付 YYYY/MM/DD形式、和暦は西暦変換（令和7=2025、令和6=2024、令和5=2023、令和4=2022、令和3=2021、令和2=2020、令和1=2019、平成N年=1988+N年）。読み取れない場合はnull",
   "store_name": "店名（判読不能は「（手書き 店名不明）」）",
-  "purpose": "支払内容・但し書き。印字・手書きを問わず「○○代」「○○費」等の記載があれば抽出（例：飲食代、交通費、消耗品代）。品目が混在して一言で表せない場合・記載なければnull",
+  "purpose": "何の代金かを必ず具体的に付記する。印字・手書き問わず但し書き・品名・サービス内容から判断し「住民票代」「郵便料金」「飲食代」「消耗品代」「交通費」等を記載。複数品目混在の場合は「各種消耗品」等。不明な場合のみnull",
   "renban": "一連No.数字のみ、なければnull",
   "invoice_number": "T+13桁、なければnull",
-  "is_nontax": "非課税取引（医療費・郵便切手・土地等）の場合はtrue、それ以外はfalse",
+  "is_nontax": "非課税取引（医療費・郵便切手・収入印紙・土地等）の場合はtrue、それ以外はfalse",
+  "tax_ambiguous": "課税区分の判断根拠が不明確な場合はtrue、明確に判断できる場合はfalse",
   "amount_10": "10%対象税込金額 数値のみ、なければnull",
   "amount_8": "8%対象税込金額 数値のみ、なければnull",
   "amount_total": "合計税込金額 数値のみ"
@@ -506,7 +559,6 @@ const RECEIPT_PROMPT = `以下のレシート・領収書画像から情報を�
 let receiptData = [];
 
 function receiptToRows(result) {
-  // 金額・日付がすべてnull → レシートなし
   if (result.date == null && result.amount_total == null &&
       result.amount_10 == null && result.amount_8 == null) return null;
 
@@ -516,7 +568,18 @@ function receiptToRows(result) {
   const invoiceClass = result.invoice_number ? '' : '区分記載';
   const isMixed      = result.amount_10 != null && result.amount_8 != null;
   const isNontax     = !!result.is_nontax;
+  const isAmbiguous  = !!result.tax_ambiguous;
+  const has8only     = result.amount_8 != null && result.amount_10 == null && !isMixed;
   const date         = result.date ?? '';
+
+  // 日付バリデーション（空欄 or 5年超前 or 未来）
+  let needsReview = !date;
+  if (date && !needsReview) {
+    const d = new Date(date);
+    const now = new Date();
+    const limit = new Date(); limit.setFullYear(now.getFullYear() - 5);
+    if (isNaN(d.getTime()) || d > now || d < limit) needsReview = true;
+  }
 
   function desc(taxLabel) {
     let s = store;
@@ -525,18 +588,21 @@ function receiptToRows(result) {
       s += ` ${taxLabel}分`;
       if (renban) s += ` 一連${renban}`;
     }
-    if (isNontax) s += ' 非課税';
+    if (isNontax)           s += '（非課税）';
+    else if (has8only || taxLabel === '8%') s += '（軽減8%）';
+    else if (isAmbiguous)   s += '（課税区分不明）';
     return s;
   }
 
+  const base = { needsReview, isDuplicate: false, storeKey: store };
   if (isMixed) {
     return [
-      { date, description: desc('10%'), amount: result.amount_10, reduced_tax: '',  invoice_class: invoiceClass },
-      { date, description: desc('8%'),  amount: result.amount_8,  reduced_tax: '※', invoice_class: invoiceClass }
+      { ...base, date, description: desc('10%'), amount: result.amount_10, reduced_tax: '',  invoice_class: invoiceClass },
+      { ...base, date, description: desc('8%'),  amount: result.amount_8,  reduced_tax: '※', invoice_class: invoiceClass }
     ];
   }
   return [
-    { date, description: desc(''), amount: result.amount_total, reduced_tax: '', invoice_class: invoiceClass }
+    { ...base, date, description: desc(''), amount: result.amount_total, reduced_tax: has8only ? '※' : '', invoice_class: invoiceClass }
   ];
 }
 
@@ -561,37 +627,45 @@ async function handleReceiptUpload(event) {
     const total = allImgs.length;
     if (total === 0) throw new Error('画像を取得できませんでした');
 
-    const isLarge   = total >= 50;
-    let lastKey     = null;
     const pageErrors = [];
+    const startTime = Date.now();
+    let completed = 0;
 
-    for (let i = 0; i < total; i++) {
-      if (abortFlag) break;
-
-      const pct = Math.round(10 + ((i + 1) / total) * 85);
-      const msg = isLarge && i < 3
-        ? `構造確認中 ${i + 1} / 3 ページ...`
-        : `${i + 1} / ${total} ページ処理中...`;
-      showProgress('receipt', msg, pct);
-
+    const pageResults = await runWithConcurrency(allImgs.map((img, i) => async () => {
+      if (abortFlag) return null;
       try {
-        const result = await callGemini(RECEIPT_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'receipt');
-        const rows = receiptToRows(result);
-        if (!rows) { if (i < total - 1) await sleep(REQUEST_DELAY); continue; }
-
-        // 両面スキャン重複除外（日付・合計金額・店名が同一の連続ページ）
-        const key = `${result.date}_${result.store_name}_${result.amount_total ?? result.amount_10}`;
-        if (key === lastKey) { if (i < total - 1) await sleep(REQUEST_DELAY); continue; }
-        lastKey = key;
-
-        receiptData.push(...rows);
+        return await callGemini(RECEIPT_PROMPT, img.data, img.mime, 2, 'receipt');
       } catch (e) {
         if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
+        pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
+        return null;
+      } finally {
+        completed++;
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        showProgress('receipt', `${completed} / ${total} ページ処理中... 経過${elapsed}秒`, Math.round(10 + completed / total * 85));
       }
+    }), CONCURRENCY);
 
-      if (i < total - 1) await sleep(REQUEST_DELAY);
+    // 順序を保ったまま両面重複除外→データ収集
+    let lastKey = null;
+    for (const result of pageResults) {
+      if (!result) continue;
+      const rows = receiptToRows(result);
+      if (!rows) continue;
+      const key = `${result.date}_${result.store_name}_${result.amount_total ?? result.amount_10}`;
+      if (key === lastKey) continue;
+      lastKey = key;
+      receiptData.push(...rows);
     }
+
+    // 重複候補検出（同一金額・同一店名）
+    const dupMap = new Map();
+    receiptData.forEach(r => {
+      const key = `${r.amount}_${r.storeKey}`;
+      if (!dupMap.has(key)) dupMap.set(key, []);
+      dupMap.get(key).push(r);
+    });
+    dupMap.forEach(rows => { if (rows.length > 1) rows.forEach(r => r.isDuplicate = true); });
 
     showProgress('receipt', abortFlag ? '中止しました' : '完了', 100);
     await sleep(400);
@@ -608,25 +682,39 @@ async function handleReceiptUpload(event) {
 
 function renderReceiptTable() {
   const tbody = document.getElementById('receipt-tbody');
-  tbody.innerHTML = receiptData.map((r, i) => `
-    <tr>
-      <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
+  tbody.innerHTML = receiptData.map((r, i) => {
+    const rowClass = r.needsReview ? 'row-review' : r.isDuplicate ? 'row-duplicate' : '';
+    const dateCell = r.needsReview
+      ? `<span class="flag-review">要確認</span>${esc(r.date)}`
+      : esc(r.date);
+    const dupFlag = r.isDuplicate ? `<span class="flag-dup">重複候補</span>` : '';
+    return `
+    <tr class="${rowClass}">
+      <td contenteditable="true" data-idx="${i}" data-field="date">${dateCell}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="description">${dupFlag}${esc(r.description)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="reduced_tax">${esc(r.reduced_tax)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="invoice_class">${esc(r.invoice_class)}</td>
-    </tr>`).join('');
+      <td><button class="btn-del-row" onclick="deleteReceiptRow(${i})">削除</button></td>
+    </tr>`;
+  }).join('');
 
   bindEditable(tbody, receiptData);
   document.getElementById('receipt-count').textContent = receiptData.length;
-  document.getElementById('receipt-results').style.display = 'block';
+  document.getElementById('receipt-results').style.display = receiptData.length ? 'block' : 'none';
+}
+
+function deleteReceiptRow(i) {
+  receiptData.splice(i, 1);
+  renderReceiptTable();
 }
 
 function downloadCSVReceipt() {
   const BOM = '﻿';
   let csv = BOM + '日付,摘要,金額,軽減税率,請求書区分\n';
   receiptData.forEach(r => {
-    csv += [r.date, r.description, r.amount ?? '', r.reduced_tax, r.invoice_class].map(csvField).join(',') + '\n';
+    const csvDate = r.needsReview ? '' : r.date;
+    csv += [csvDate, r.description, r.amount ?? '', r.reduced_tax, r.invoice_class].map(csvField).join(',') + '\n';
   });
   downloadFile(csv, '領収書.csv');
 }
@@ -634,7 +722,14 @@ function downloadCSVReceipt() {
 // ═══════════════════════════════════════════════════════════
 //  FEATURE ②  BANKBOOK
 // ═══════════════════════════════════════════════════════════
-const BANKBOOK_PROMPT = `あなたは会計書類OCRの専門家です。この通帳の画像から全ての取引行を抽出してください。
+function getBankbookPrompt(baseYear) {
+  const ry     = baseYear - 2018;
+  const ryStr  = String(ry).padStart(2, '0');
+  const ryStr1 = String(ry + 1).padStart(2, '0');
+  const wyStr  = String(baseYear).slice(2);
+  const wyStr1 = String(baseYear + 1).slice(2);
+  return `あなたは日本の銀行通帳のOCRエキスパートです。
+通帳画像から取引データを正確に抽出し、JSON形式で返してください。
 
 必ず以下のJSON形式だけで回答してください（説明文・コードブロック不要）:
 {
@@ -643,22 +738,63 @@ const BANKBOOK_PROMPT = `あなたは会計書類OCRの専門家です。この�
       "date": "YYYY/MM/DD",
       "withdrawal": 数値またはnull,
       "deposit": 数値またはnull,
-      "description": "摘要",
-      "balance": 数値またはnull
+      "balance": 数値またはnull,
+      "description": "摘要文字列"
     }
   ]
 }
 
-抽出ルール:
-- date: 和暦を西暦変換（令和7=2025、令和6=2024等。月日のみなら前の行の年を引き継ぐ）
-- withdrawal: お支払金額・出金（ない行はnull）
-- deposit: お預り金額・入金（ない行はnull）
-- balance: 差引残高の数値。【重要】差引残高列が空欄の行は必ずnullにすること。同じ日付で複数行ある場合、残高が印字されているのは通常その日の最後の行のみ。「RT206」「R7」「LT166」などの記号・店番号欄の値を残高と誤読しないこと。1つの取引が物理的に2行にわたる場合（1行目に入出金額・2行目に残高のみ）は、2行をまとめて1つのitemとして返し、入出金額と残高を同じitemに含めること。
-- description: 摘要・取引内容
-- 全取引行を漏らさず抽出すること
-- 数値はカンマなしの整数値
-- 日付・入金・出金・残高がすべて空欄の行（通帳の物理的な空白行）はitemsに含めないこと
-- 入金・出金がともにない行（前月繰越・ページ繰越など残高のみの行、摘要のみの行）もitemsに含めないこと`;
+### 入出金の判断ルール（最重要）
+- **必ず列の物理的な位置で判断すること**
+- 「お支払金額」「出金」「引落」列に記載された金額 → withdrawal（出金）
+- 「お預り金額」「入金」「預入」列に記載された金額 → deposit（入金）
+- 摘要の文言（「払戻」「振込」「為替」等）で入出金を判断しないこと
+- 「払戻」は出金列に記載されることもあるため、列位置のみで判断する
+- 「為替手数料」「振込手数料」は通常出金列の小額取引。入金列に記載がない限り出金とする
+
+### 日付のルール
+- 通帳の日付形式を YYYY/MM/DD に変換する
+- 年度の変換ルール（最優先・この通帳専用の設定）：
+  - この通帳の「${ryStr}」は令和${ry}年 = ${baseYear}年を意味します
+  - 「${ryStr}-」で始まる日付 → ${baseYear}年（例：${ryStr}-12-25 → ${baseYear}/12/25）
+  - 「${ryStr1}-」で始まる日付 → ${baseYear + 1}年（例：${ryStr1}-1-5 → ${baseYear + 1}/01/05）
+  - 「${wyStr}--」で始まる日付 → ${baseYear}年（例：${wyStr}--1-27 → ${baseYear}/01/27）
+  - 「${wyStr1}--」で始まる日付 → ${baseYear + 1}年（例：${wyStr1}--1-5 → ${baseYear + 1}/01/05）
+- ページ上部に年度が記載されている場合はそれを使用する
+- 日付が空欄の行（前行の取引の続き行）は前行と同じ日付を使用する
+
+### 残高のルール
+- 差引残高列が空欄の行は balance: null とする
+- 「RT206」「R7」「LT166」「K 206」等の記号・店番号欄の値を残高と誤読しないこと
+- 「5ネント゛シモキ」等の利払期表記は残高ではない。無視すること
+- アスタリスク(*)は区切り文字。例：「*1,000,000******1,010,000」→ balance: 1010000
+- 残高のマスキング部分(*****)は読み取り不要。前後の数値のみ抽出する
+
+### スキップすべき行
+- 日付・入金・出金・残高がすべて空欄の物理的空白行
+- 「繰越」「前月繰越」「前ページ繰越」「通帳内のすべてのお取引を繰越しました」の行
+- 残高のみで入出金が空欄の繰越行
+- ページ下部の注意書き・説明文
+
+### 複数行にまたがる取引
+- 1取引が2行にまたがる場合（1行目：摘要+金額、2行目：振込先名等）は1つのitemとして結合する
+- 振込先名（「--------ヨウ」等のダッシュ区切り）は前行の摘要に結合する
+- 「シンワテ゛コウヘ オクリコシヲ オネカ゛イシマス」等の補足行は独立したitemにしない
+
+### 金額の読み取り精度
+- 類似数字の誤読に注意：7と1、8と0、6と0、3と8、5と6
+- カンマ区切りの数値（1,000,000等）は正確に読み取る
+- 前後の残高との整合性を確認してから出力する
+- 存在しない取引を追加しないこと。画像に印字されている行のみ抽出する
+
+### 利息・決算利息の行
+- 「決算利息」「利息」「利子」の行は金額が1円〜数百円と極小でも必ず抽出する
+- 東京東信用金庫等で見られる「*3*******2,010,003」形式：入出金額が*と*に挟まれた数字、残高が末尾の数値
+
+### 摘要フィールドのルール
+- 摘要はお取引内容列のテキストのみを抽出する
+- 通帳右端の店番号・記号欄（「RT272」「Q 537」「R 271」「LT166」「K 454」「RT206」等）は摘要ではない。descriptionに含めないこと
+- 摘要が空欄の行は description: "" とする`;}
 
 let bankbookData = [];
 let bankbookFileNames = [];
@@ -685,34 +821,55 @@ async function handleBankbookUpload(event) {
     const total = allImgs.length;
     if (total === 0) throw new Error('画像を取得できませんでした');
 
+    const baseYear   = parseInt(document.getElementById('bankbook-base-year').value) || 2025;
+    const prompt     = getBankbookPrompt(baseYear);
     const pageErrors = [];
-    for (let i = 0; i < total; i++) {
-      const pct = Math.round(10 + ((i + 1) / total) * 85);
-      showProgress('bankbook', `${i + 1} / ${total} ページ処理中...`, pct);
+    const zeroPages  = [];
+    const startTime  = Date.now();
+    let completed    = 0;
 
-      if (abortFlag) break;
-      try {
-        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook');
-        for (const item of (result.items || [])) {
-          const hasWd  = item.withdrawal != null;
-          const hasDep = item.deposit    != null;
-          const hasBal = item.balance    != null;
-          // 入出金がない行（繰越行・空白行・残高のみ行）→ CSVに出力しない・残高も無視
-          if (!hasWd && !hasDep) continue;
-          bankbookData.push({
-            date:        item.date        ?? '',
-            withdrawal:  hasWd  ? item.withdrawal  : '',
-            deposit:     hasDep ? item.deposit     : '',
-            description: item.description ?? '',
-            balance:     hasBal ? item.balance     : ''
-          });
+    const pageResults = await runWithConcurrency(allImgs.map((img, i) => async () => {
+      if (abortFlag) return null;
+      let result = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          result = await callGemini(prompt, img.data, img.mime, 2, 'bankbook');
+          if ((result.items || []).length > 0) break;
+          // 0件なら再試行
+          const msgEl = document.getElementById('bankbook-progress-msg');
+          if (msgEl && attempt < 2) msgEl.textContent = `ページ ${i + 1} 結果0件 再試行中 (${attempt + 2}/3)...`;
+        } catch (e) {
+          if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
+          if (attempt === 2) pageErrors.push(`ページ ${i + 1} 要確認（3回失敗しスキップ）: ${e.message}`);
+          result = null;
         }
-      } catch (e) {
-        if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
       }
+      if (!result || (result.items || []).length === 0) zeroPages.push(i + 1);
+      completed++;
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      showProgress('bankbook', `${completed} / ${total} ページ処理中... 経過${elapsed}秒`, Math.round(10 + completed / total * 85));
+      return result;
+    }), CONCURRENCY);
 
-      if (i < total - 1) await sleep(REQUEST_DELAY);
+    const CARRYOVER_RE = /前[月ページ頁]?繰越|繰越残高|^繰越$/;
+    for (const result of pageResults) {
+      if (!result) continue;
+      for (const item of (result.items || [])) {
+        const hasWd  = item.withdrawal != null;
+        const hasDep = item.deposit    != null;
+        const hasBal = item.balance    != null;
+        if (!hasWd && !hasDep) continue;
+        // 繰越行をOCRが誤って入出金ありで返した場合も除外
+        const desc = item.description ?? '';
+        if (CARRYOVER_RE.test(desc)) continue;
+        bankbookData.push({
+          date:        item.date        ?? '',
+          withdrawal:  hasWd  ? item.withdrawal  : '',
+          deposit:     hasDep ? item.deposit     : '',
+          description: desc,
+          balance:     hasBal ? item.balance     : ''
+        });
+      }
     }
 
     const errCount = runBalanceCheck();
@@ -720,7 +877,14 @@ async function handleBankbookUpload(event) {
     showProgress('bankbook', abortFlag ? '中止しました' : '完了', 100);
     await sleep(400);
     hideProgress('bankbook');
-    if (pageErrors.length) showError('bankbook', pageErrors.join('\n'));
+
+    // 警告メッセージ収集
+    const warns = [...pageErrors];
+    if (zeroPages.length) warns.push(`抽出件数0件のページ: ${zeroPages.join(', ')}`);
+    const gapWarns = checkDateGaps(bankbookData);
+    warns.push(...gapWarns);
+    if (warns.length) showError('bankbook', warns.join('\n'));
+
     renderBankbookTable(errCount);
     updateCostBadge('bankbook');
 
@@ -728,6 +892,22 @@ async function handleBankbookUpload(event) {
     hideProgress('bankbook');
     showError('bankbook', e.message);
   }
+}
+
+function checkDateGaps(data) {
+  const warns = [];
+  const dates = data
+    .map(r => r.date ? new Date(r.date) : null)
+    .filter(d => d && !isNaN(d.getTime()))
+    .sort((a, b) => a - b);
+  for (let i = 1; i < dates.length; i++) {
+    const gapDays = (dates[i] - dates[i - 1]) / 86400000;
+    if (gapDays > 30) {
+      const fmt = d => `${d.getFullYear()}年${d.getMonth() + 1}月`;
+      warns.push(`${fmt(dates[i - 1])}〜${fmt(dates[i])}のデータが欠落している可能性があります（約${Math.round(gapDays)}日の空白）`);
+    }
+  }
+  return warns;
 }
 
 function runBalanceCheck() {
@@ -882,32 +1062,38 @@ async function handleCardUpload(event) {
     if (total === 0) throw new Error('画像を取得できませんでした');
 
     const pageErrors = [];
-    for (let i = 0; i < total; i++) {
-      const pct = Math.round(10 + ((i + 1) / total) * 85);
-      showProgress('card', `${i + 1} / ${total} ページ処理中...`, pct);
+    const startTime = Date.now();
+    let completed = 0;
 
-      if (abortFlag) break;
+    const pageResults = await runWithConcurrency(allImgs.map((img, i) => async () => {
+      if (abortFlag) return null;
       try {
-        const result = await callGemini(CARD_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'card');
-        for (const item of (result.items || [])) {
-          if (!item.date && item.amount == null) continue;
-          // 合計・サマリ行を除外
-          const d = item.description ?? '';
-          if (/今月ご利用額|ご請求金額|ご請求合計|合計額|その他ご請求分|繰越残高|お支払金額/.test(d)) continue;
-          if (/^.{1,10}様/.test(d)) continue; // 「〇〇様」で始まる行
-          cardData.push({
-            date:        item.date        ?? '',
-            amount:      item.amount      != null ? item.amount : '',
-            description: item.description ?? ''
-          });
-        }
-        if (result.total != null) cardTotals.push(result.total);
+        return await callGemini(CARD_PROMPT, img.data, img.mime, 2, 'card');
       } catch (e) {
         if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
+        pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
+        return null;
+      } finally {
+        completed++;
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        showProgress('card', `${completed} / ${total} ページ処理中... 経過${elapsed}秒`, Math.round(10 + completed / total * 85));
       }
+    }), CONCURRENCY);
 
-      if (i < total - 1) await sleep(REQUEST_DELAY);
+    for (const result of pageResults) {
+      if (!result) continue;
+      for (const item of (result.items || [])) {
+        if (!item.date && item.amount == null) continue;
+        const d = item.description ?? '';
+        if (/今月ご利用額|ご請求金額|ご請求合計|合計額|その他ご請求分|繰越残高|お支払金額/.test(d)) continue;
+        if (/^.{1,10}様/.test(d)) continue;
+        cardData.push({
+          date:        item.date        ?? '',
+          amount:      item.amount      != null ? item.amount : '',
+          description: item.description ?? ''
+        });
+      }
+      if (result.total != null) cardTotals.push(result.total);
     }
 
     showProgress('card', abortFlag ? '中止しました' : '完了', 100);
