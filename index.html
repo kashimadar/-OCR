@@ -1063,7 +1063,7 @@ function renderBankbookTable(errCount = 0) {
 
 function downloadCSVBankbook() {
   const BOM = '﻿';
-  let csv = BOM + '日付,出金,入金,残高,摘要\n';
+  let csv = BOM + 'ページ,日付,出金,入金,残高,摘要\n';
   let running = null;
   bankbookData.forEach(r => {
     const dep = Math.round(parseFloat(r.deposit)    || 0);
@@ -1072,7 +1072,7 @@ function downloadCSVBankbook() {
     const printed = (r.balance !== '' && r.balance != null) ? Math.round(parseFloat(r.balance)) : null;
     if (printed !== null) running = printed;
     const balOut = printed !== null ? printed : (running !== null ? running : '');
-    csv += [r.date, r.withdrawal, r.deposit, balOut, r.description].map(csvField).join(',') + '\n';
+    csv += [r.page ?? '', r.date, r.withdrawal, r.deposit, balOut, r.description].map(csvField).join(',') + '\n';
   });
   downloadFile(csv, toCsvFilename(bankbookFileNames, '通帳.csv'));
 }
@@ -1223,9 +1223,9 @@ function renderCardTable() {
 
 function downloadCSVCard() {
   const BOM = '﻿';
-  let csv = BOM + '日付,出金,摘要\n';
+  let csv = BOM + 'ページ,日付,出金,摘要\n';
   cardData.forEach(r => {
-    csv += [r.date, r.amount, r.description].map(csvField).join(',') + '\n';
+    csv += [r.page ?? '', r.date, r.amount, r.description].map(csvField).join(',') + '\n';
   });
   downloadFile(csv, toCsvFilename(cardFileNames, 'カード明細.csv'));
 }
