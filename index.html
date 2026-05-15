@@ -1019,9 +1019,11 @@ function renderBankbookTable(errCount = 0) {
   tbody.innerHTML = bankbookData.map((r, i) => {
     const isNG    = r.check && r.check.startsWith('残高不一致');
     const isFixed = r.autoFixed;
+    const isDismissed = !r.check && r.prevCheck;
     const checkCell = r.check === 'OK'
       ? (isFixed ? '<span class="check-fixed">↔ 自動修正</span>' : '<span class="check-ok">OK</span>')
-      : isNG ? `<span class="check-ng">${esc(r.check)}</span><button onclick="dismissError(${i})" style="margin-left:6px;padding:1px 7px;font-size:0.75rem;background:#718096;color:#fff;border:none;border-radius:3px;cursor:pointer">解除</button>` : '';
+      : isNG ? `<span class="check-ng">${esc(r.check)}</span><button onclick="dismissError(${i})" style="margin-left:6px;padding:1px 7px;font-size:0.75rem;background:#718096;color:#fff;border:none;border-radius:3px;cursor:pointer">解除</button>`
+      : isDismissed ? `<button onclick="undoDismiss(${i})" style="padding:1px 7px;font-size:0.75rem;background:#e2e8f0;color:#4a5568;border:none;border-radius:3px;cursor:pointer">↩ 元に戻す</button>` : '';
     return `<tr class="${isNG ? 'row-error' : isFixed ? 'row-autofixed' : ''}">
       <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
       <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
@@ -1208,7 +1210,15 @@ function downloadCSV(tab) {
 }
 
 function dismissError(i) {
+  bankbookData[i].prevCheck = bankbookData[i].check;
   bankbookData[i].check = '';
+  const errCount = bankbookData.filter(r => r.check && r.check.startsWith('残高不一致')).length;
+  renderBankbookTable(errCount);
+}
+
+function undoDismiss(i) {
+  bankbookData[i].check = bankbookData[i].prevCheck || '';
+  bankbookData[i].prevCheck = null;
   const errCount = bankbookData.filter(r => r.check && r.check.startsWith('残高不一致')).length;
   renderBankbookTable(errCount);
 }
