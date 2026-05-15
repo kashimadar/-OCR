@@ -348,7 +348,7 @@ function setupDrop(dropId, fileId, handler) {
 }
 
 // ─── PDF → base64 images ─────────────────────────────────
-function isBlankCanvas(canvas, threshold = 250) {
+function isBlankCanvas(canvas, threshold = 240) {
   const ctx  = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
   const step = Math.max(1, Math.floor(Math.sqrt(w * h / 8000)));
