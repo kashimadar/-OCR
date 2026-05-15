@@ -185,6 +185,7 @@
     </div>
     <div id="bankbook-error"></div>
     <div id="bankbook-filename"></div>
+    <div id="bankbook-note"></div>
 
     <div id="bankbook-results" class="results-area">
       <div class="results-header">
@@ -1006,6 +1007,17 @@ function runBalanceCheck() {
 
 function renderBankbookTable(errCount = 0) {
   renderFilename('bankbook', bankbookFileNames);
+  const noteEl = document.getElementById('bankbook-note');
+  if (noteEl) {
+    noteEl.innerHTML = errCount > 0
+      ? `<div style="font-size:0.82rem;color:#4a5568;padding:4px 2px;line-height:1.8">
+          残高不一致のボタン説明：
+          <span style="background:#38a169;color:#fff;border-radius:3px;padding:1px 6px;margin:0 4px">✓ 計算値が正しい</span>計算値で残高を上書きしOKにする　／
+          <span style="background:#718096;color:#fff;border-radius:3px;padding:1px 6px;margin:0 4px">✕ 解除</span>エラー表示を非表示にする（計算値には戻らない）　／
+          <span style="background:#e2e8f0;color:#4a5568;border-radius:3px;padding:1px 6px;margin:0 4px">↩ 元に戻す</span>解除を取り消す
+        </div>`
+      : '';
+  }
   const infoEl = document.getElementById('bankbook-balance-info');
   const balanceLabel = bankbookData.some(r => r.balance !== '')
     ? (errCount === 0
