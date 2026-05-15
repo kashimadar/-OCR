@@ -72,6 +72,8 @@
     tr.row-duplicate { background: #fffde7 !important; }
     .check-ok { color: #059669; font-weight: 700; }
     .check-ng { color: #e53e3e; font-weight: 700; }
+    .check-fixed { color: #38a169; font-weight: 700; font-size: 0.82rem; }
+    tr.row-autofixed { background: #f0fff4 !important; }
     .btn-del-row { padding: 2px 8px; background: #e53e3e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
     .btn-del-row:hover { background: #c53030; }
     .flag-review { font-size: 0.75rem; background: #e53e3e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
@@ -931,47 +933,71 @@ function checkDateGaps(data) {
 }
 
 function runBalanceCheck() {
-  bankbookData.forEach(r => r.check = '');
+  bankbookData.forEach(r => { r.check = ''; r.autoFixed = false; });
 
-  let running       = null; // 累積残高（null = 基準値未確立）
-  let intervalStart = 0;    // 現区間の開始インデックス
-  let errCount      = 0;
+  let running              = null;
+  let intervalStart        = 0;
+  let intervalStartBalance = null;
+  let errCount             = 0;
 
   for (let i = 0; i < bankbookData.length; i++) {
     const row = bankbookData[i];
     const dep = Math.round(parseFloat(row.deposit)    || 0);
     const wd  = Math.round(parseFloat(row.withdrawal) || 0);
 
-    // 基準値確立済みなら入出金を累積
-    // チェック式: 前行基準残高 + 入金 - 出金 = 当行残高
-    if (running !== null) {
-      running = running + dep - wd;
-    }
+    if (running !== null) running = running + dep - wd;
 
-    // 残高なし → 照合せず次の行へ（次の残高行で区間ごとチェック）
     if (row.balance === '' || row.balance == null) continue;
 
     const actual = Math.round(parseFloat(row.balance));
 
-    // 基準値未確立 → この行の残高を基準値に設定してチェックなし
     if (running === null) {
-      running       = actual;
-      intervalStart = i + 1;
+      running              = actual;
+      intervalStartBalance = actual;
+      intervalStart        = i + 1;
       continue;
     }
 
-    // 区間チェック（intervalStart 〜 i 行を一括判定）
     if (running === actual) {
       for (let j = intervalStart; j <= i; j++) bankbookData[j].check = 'OK';
     } else {
-      const label = `残高不一致（計算値：${running.toLocaleString()}円、通帳値：${actual.toLocaleString()}円）`;
-      for (let j = intervalStart; j <= i; j++) bankbookData[j].check = label;
-      errCount++;
+      // 1行スワップで修正できるか試みる
+      const diff = actual - running;
+      let fixedIdx = -1;
+
+      for (let j = intervalStart; j <= i; j++) {
+        const r = bankbookData[j];
+        const w = Math.round(parseFloat(r.withdrawal) || 0);
+        const d = Math.round(parseFloat(r.deposit)    || 0);
+
+        if (w > 0 && d === 0 && 2 * w === diff) {
+          r.deposit = w; r.withdrawal = ''; r.autoFixed = true;
+          fixedIdx = j; break;
+        }
+        if (d > 0 && w === 0 && -2 * d === diff) {
+          r.withdrawal = d; r.deposit = ''; r.autoFixed = true;
+          fixedIdx = j; break;
+        }
+      }
+
+      if (fixedIdx >= 0) {
+        // 修正後に再計算して確認
+        let recalc = intervalStartBalance;
+        for (let j = intervalStart; j <= i; j++) {
+          recalc += Math.round(parseFloat(bankbookData[j].deposit)    || 0)
+                  - Math.round(parseFloat(bankbookData[j].withdrawal) || 0);
+        }
+        for (let j = intervalStart; j <= i; j++) bankbookData[j].check = 'OK';
+      } else {
+        const label = `残高不一致（計算値：${running.toLocaleString()}円、通帳値：${actual.toLocaleString()}円）`;
+        for (let j = intervalStart; j <= i; j++) bankbookData[j].check = label;
+        errCount++;
+      }
     }
 
-    // 照合後、通帳の残高を新たな基準値に更新（不一致でも通帳値を採用し連鎖防止）
-    running       = actual;
-    intervalStart = i + 1;
+    running              = actual;
+    intervalStartBalance = actual;
+    intervalStart        = i + 1;
   }
 
   return errCount;
@@ -991,11 +1017,12 @@ function renderBankbookTable(errCount = 0) {
 
   const tbody = document.getElementById('bankbook-tbody');
   tbody.innerHTML = bankbookData.map((r, i) => {
-    const isNG = r.check && r.check.startsWith('残高不一致');
+    const isNG    = r.check && r.check.startsWith('残高不一致');
+    const isFixed = r.autoFixed;
     const checkCell = r.check === 'OK'
-      ? '<span class="check-ok">OK</span>'
+      ? (isFixed ? '<span class="check-fixed">↔ 自動修正</span>' : '<span class="check-ok">OK</span>')
       : isNG ? `<span class="check-ng">${esc(r.check)}</span>` : '';
-    return `<tr class="${isNG ? 'row-error' : ''}">
+    return `<tr class="${isNG ? 'row-error' : isFixed ? 'row-autofixed' : ''}">
       <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
       <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="withdrawal">${esc(String(r.withdrawal))}</td>
