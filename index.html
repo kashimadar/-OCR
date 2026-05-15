@@ -658,15 +658,6 @@ async function handleReceiptUpload(event) {
       receiptData.push(...rows);
     }
 
-    // 重複候補検出（同一金額・同一店名）
-    const dupMap = new Map();
-    receiptData.forEach(r => {
-      const key = `${r.amount}_${r.storeKey}`;
-      if (!dupMap.has(key)) dupMap.set(key, []);
-      dupMap.get(key).push(r);
-    });
-    dupMap.forEach(rows => { if (rows.length > 1) rows.forEach(r => r.isDuplicate = true); });
-
     showProgress('receipt', abortFlag ? '中止しました' : '完了', 100);
     await sleep(400);
     hideProgress('receipt');
@@ -683,15 +674,14 @@ async function handleReceiptUpload(event) {
 function renderReceiptTable() {
   const tbody = document.getElementById('receipt-tbody');
   tbody.innerHTML = receiptData.map((r, i) => {
-    const rowClass = r.needsReview ? 'row-review' : r.isDuplicate ? 'row-duplicate' : '';
+    const rowClass = r.needsReview ? 'row-review' : '';
     const dateCell = r.needsReview
       ? `<span class="flag-review">要確認</span>${esc(r.date)}`
       : esc(r.date);
-    const dupFlag = r.isDuplicate ? `<span class="flag-dup">重複候補</span>` : '';
     return `
     <tr class="${rowClass}">
       <td contenteditable="true" data-idx="${i}" data-field="date">${dateCell}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="description">${dupFlag}${esc(r.description)}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="reduced_tax">${esc(r.reduced_tax)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="invoice_class">${esc(r.invoice_class)}</td>
