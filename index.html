@@ -1064,8 +1064,15 @@ function renderBankbookTable(errCount = 0) {
 function downloadCSVBankbook() {
   const BOM = '﻿';
   let csv = BOM + '日付,出金,入金,残高,摘要\n';
+  let running = null;
   bankbookData.forEach(r => {
-    csv += [r.date, r.withdrawal, r.deposit, r.balance, r.description].map(csvField).join(',') + '\n';
+    const dep = Math.round(parseFloat(r.deposit)    || 0);
+    const wd  = Math.round(parseFloat(r.withdrawal) || 0);
+    if (running !== null) running = running + dep - wd;
+    const printed = (r.balance !== '' && r.balance != null) ? Math.round(parseFloat(r.balance)) : null;
+    if (printed !== null) running = printed;
+    const balOut = printed !== null ? printed : (running !== null ? running : '');
+    csv += [r.date, r.withdrawal, r.deposit, balOut, r.description].map(csvField).join(',') + '\n';
   });
   downloadFile(csv, toCsvFilename(bankbookFileNames, '通帳.csv'));
 }
