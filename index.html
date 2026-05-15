@@ -991,6 +991,7 @@ function runBalanceCheck() {
       } else {
         const label = `残高不一致（計算値：${running.toLocaleString()}円、通帳値：${actual.toLocaleString()}円）`;
         for (let j = intervalStart; j <= i; j++) bankbookData[j].check = label;
+        bankbookData[i].calculatedBalance = running;
         errCount++;
       }
     }
@@ -1020,10 +1021,13 @@ function renderBankbookTable(errCount = 0) {
     const isNG    = r.check && r.check.startsWith('残高不一致');
     const isFixed = r.autoFixed;
     const isDismissed = !r.check && r.prevCheck;
+    const btnCalc    = `<button onclick="acceptCalculated(${i})" style="margin-left:6px;padding:2px 8px;font-size:0.75rem;background:#38a169;color:#fff;border:none;border-radius:3px;cursor:pointer">✓ 計算値が正しい</button>`;
+    const btnDismiss = `<button onclick="dismissError(${i})" style="margin-left:4px;padding:2px 8px;font-size:0.75rem;background:#718096;color:#fff;border:none;border-radius:3px;cursor:pointer">✕ 解除</button>`;
+    const btnUndo    = `<button onclick="undoDismiss(${i})" style="padding:2px 8px;font-size:0.75rem;background:#e2e8f0;color:#4a5568;border:none;border-radius:3px;cursor:pointer">↩ 元に戻す</button>`;
     const checkCell = r.check === 'OK'
       ? (isFixed ? '<span class="check-fixed">↔ 自動修正</span>' : '<span class="check-ok">OK</span>')
-      : isNG ? `<span class="check-ng">${esc(r.check)}</span><button onclick="dismissError(${i})" style="margin-left:6px;padding:1px 7px;font-size:0.75rem;background:#718096;color:#fff;border:none;border-radius:3px;cursor:pointer">解除</button>`
-      : isDismissed ? `<button onclick="undoDismiss(${i})" style="padding:1px 7px;font-size:0.75rem;background:#e2e8f0;color:#4a5568;border:none;border-radius:3px;cursor:pointer">↩ 元に戻す</button>` : '';
+      : isNG ? `<span class="check-ng">${esc(r.check)}</span>${r.calculatedBalance != null ? btnCalc : ''}${btnDismiss}`
+      : isDismissed ? btnUndo : '';
     return `<tr class="${isNG ? 'row-error' : isFixed ? 'row-autofixed' : ''}">
       <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
       <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
@@ -1207,6 +1211,13 @@ function downloadCSV(tab) {
   if (tab === 'receipt')  return downloadCSVReceipt();
   if (tab === 'bankbook') return downloadCSVBankbook();
   if (tab === 'card')     return downloadCSVCard();
+}
+
+function acceptCalculated(i) {
+  bankbookData[i].balance = bankbookData[i].calculatedBalance;
+  bankbookData[i].calculatedBalance = null;
+  const errCount = runBalanceCheck();
+  renderBankbookTable(errCount);
 }
 
 function dismissError(i) {
