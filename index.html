@@ -197,6 +197,7 @@
       <div class="action-row">
         <button class="btn-clear" onclick="clearResults('bankbook')">クリア</button>
         <button style="padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem" onclick="recheckBalance()">残高再チェック</button>
+        <span id="recheck-done" style="display:none;color:#059669;font-size:0.85rem;font-weight:600">✓ チェックしました</span>
         <span class="tip">出金・入金・残高を編集後、「残高再チェック」で再計算できます。</span>
       </div>
       <div class="table-wrap">
@@ -1264,6 +1265,8 @@ function recheckBalance() {
   if (!bankbookData.length) return;
   const errCount = runBalanceCheck();
   renderBankbookTable(errCount);
+  const done = document.getElementById('recheck-done');
+  if (done) { done.style.display = 'inline'; setTimeout(() => { done.style.display = 'none'; }, 3000); }
 }
 
 // ─── Clear results ────────────────────────────────────────
