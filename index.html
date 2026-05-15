@@ -151,7 +151,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th><th>操作</th></tr></thead>
+          <thead><tr><th>P.</th><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th><th>操作</th></tr></thead>
           <tbody id="receipt-tbody"></tbody>
         </table>
       </div>
@@ -198,7 +198,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
+          <thead><tr><th>P.</th><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
           <tbody id="bankbook-tbody"></tbody>
         </table>
       </div>
@@ -238,7 +238,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>日付</th><th>出金 (円)</th><th>摘要 / 利用先</th></tr></thead>
+          <thead><tr><th>P.</th><th>日付</th><th>出金 (円)</th><th>摘要 / 利用先</th></tr></thead>
           <tbody id="card-tbody"></tbody>
         </table>
       </div>
@@ -652,7 +652,8 @@ async function handleReceiptUpload(event) {
     const pageResults = await runWithConcurrency(allImgs.map((img, i) => async () => {
       if (abortFlag) return null;
       try {
-        return await callGemini(RECEIPT_PROMPT, img.data, img.mime, 2, 'receipt');
+        const result = await callGemini(RECEIPT_PROMPT, img.data, img.mime, 2, 'receipt');
+        return { result, page: i + 1 };
       } catch (e) {
         if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
         pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
@@ -666,13 +667,15 @@ async function handleReceiptUpload(event) {
 
     // 順序を保ったまま両面重複除外→データ収集
     let lastKey = null;
-    for (const result of pageResults) {
-      if (!result) continue;
+    for (const item of pageResults) {
+      if (!item) continue;
+      const { result, page } = item;
       const rows = receiptToRows(result);
       if (!rows) continue;
       const key = `${result.date}_${result.store_name}_${result.amount_total ?? result.amount_10}`;
       if (key === lastKey) continue;
       lastKey = key;
+      rows.forEach(r => r.page = page);
       receiptData.push(...rows);
     }
 
@@ -699,6 +702,7 @@ function renderReceiptTable() {
       : esc(r.date);
     return `
     <tr class="${rowClass}">
+      <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
       <td contenteditable="true" data-idx="${i}" data-field="date">${dateCell}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
@@ -857,12 +861,13 @@ async function handleBankbookUpload(event) {
       completed++;
       const elapsed = Math.round((Date.now() - startTime) / 1000);
       showProgress('bankbook', `${completed} / ${total} ページ処理中... 経過${elapsed}秒`, Math.round(10 + completed / total * 85));
-      return result;
+      return result ? { result, page: i + 1 } : null;
     }), CONCURRENCY);
 
     const CARRYOVER_RE = /前[月ページ頁]?繰越|繰越残高|^繰越$/;
-    for (const result of pageResults) {
-      if (!result) continue;
+    for (const pageItem of pageResults) {
+      if (!pageItem) continue;
+      const { result, page } = pageItem;
       for (const item of (result.items || [])) {
         const hasWd  = item.withdrawal != null;
         const hasDep = item.deposit    != null;
@@ -872,6 +877,7 @@ async function handleBankbookUpload(event) {
         const desc = item.description ?? '';
         if (CARRYOVER_RE.test(desc)) continue;
         bankbookData.push({
+          page,
           date:        item.date        ?? '',
           withdrawal:  hasWd  ? item.withdrawal  : '',
           deposit:     hasDep ? item.deposit     : '',
@@ -985,6 +991,7 @@ function renderBankbookTable(errCount = 0) {
       ? '<span class="check-ok">OK</span>'
       : isNG ? `<span class="check-ng">${esc(r.check)}</span>` : '';
     return `<tr class="${isNG ? 'row-error' : ''}">
+      <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
       <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="withdrawal">${esc(String(r.withdrawal))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="deposit">${esc(String(r.deposit))}</td>
@@ -1076,7 +1083,8 @@ async function handleCardUpload(event) {
     const pageResults = await runWithConcurrency(allImgs.map((img, i) => async () => {
       if (abortFlag) return null;
       try {
-        return await callGemini(CARD_PROMPT, img.data, img.mime, 2, 'card');
+        const result = await callGemini(CARD_PROMPT, img.data, img.mime, 2, 'card');
+        return { result, page: i + 1 };
       } catch (e) {
         if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
         pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
@@ -1088,14 +1096,16 @@ async function handleCardUpload(event) {
       }
     }), CONCURRENCY);
 
-    for (const result of pageResults) {
-      if (!result) continue;
+    for (const pageItem of pageResults) {
+      if (!pageItem) continue;
+      const { result, page } = pageItem;
       for (const item of (result.items || [])) {
         if (!item.date && item.amount == null) continue;
         const d = item.description ?? '';
         if (/今月ご利用額|ご請求金額|ご請求合計|合計額|その他ご請求分|繰越残高|お支払金額/.test(d)) continue;
         if (/^.{1,10}様/.test(d)) continue;
         cardData.push({
+          page,
           date:        item.date        ?? '',
           amount:      item.amount      != null ? item.amount : '',
           description: item.description ?? ''
@@ -1122,6 +1132,7 @@ function renderCardTable() {
   const tbody = document.getElementById('card-tbody');
   tbody.innerHTML = cardData.map((r, i) => `
     <tr>
+      <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
       <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
