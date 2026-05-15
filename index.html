@@ -137,6 +137,7 @@
       <div class="progress-bar-wrap"><div class="progress-bar" id="receipt-progress-bar"></div></div>
     </div>
     <div id="receipt-error"></div>
+    <div id="receipt-filename"></div>
 
     <div id="receipt-results" class="results-area">
       <div class="results-header">
@@ -181,6 +182,7 @@
       <div class="progress-bar-wrap"><div class="progress-bar" id="bankbook-progress-bar"></div></div>
     </div>
     <div id="bankbook-error"></div>
+    <div id="bankbook-filename"></div>
 
     <div id="bankbook-results" class="results-area">
       <div class="results-header">
@@ -221,6 +223,7 @@
       <div class="progress-bar-wrap"><div class="progress-bar" id="card-progress-bar"></div></div>
     </div>
     <div id="card-error"></div>
+    <div id="card-filename"></div>
 
     <div id="card-results" class="results-area">
       <div class="results-header">
@@ -517,6 +520,20 @@ function bindEditable(tbody, dataArray) {
   });
 }
 
+// ─── Filename helpers ─────────────────────────────────────
+function renderFilename(tab, fileNames) {
+  const el = document.getElementById(tab + '-filename');
+  if (!el) return;
+  el.innerHTML = fileNames.length
+    ? `<div style="font-size:0.88rem;color:#4a5568;padding:4px 2px">📄 ${fileNames.map(esc).join('　')}</div>`
+    : '';
+}
+
+function toCsvFilename(fileNames, fallback) {
+  if (!fileNames.length) return fallback;
+  return fileNames[0].replace(/\.[^.]+$/, '') + '.csv';
+}
+
 // ─── CSV export ───────────────────────────────────────────
 function csvField(v) {
   const s = String(v ?? '');
@@ -556,6 +573,7 @@ const RECEIPT_PROMPT = `以下のレシート・領収書画像から情報を�
 - レシート以外のページはすべてnullで返す`;
 
 let receiptData = [];
+let receiptFileNames = [];
 
 function receiptToRows(result) {
   if (result.date == null && result.amount_total == null &&
@@ -612,6 +630,7 @@ async function handleReceiptUpload(event) {
 
   clearError('receipt');
   receiptData = [];
+  receiptFileNames = files.map(f => f.name);
   tabCost.receipt = 0;
   resetAbort();
 
@@ -662,6 +681,7 @@ async function handleReceiptUpload(event) {
     hideProgress('receipt');
     if (pageErrors.length) showError('receipt', pageErrors.join('\n'));
     renderReceiptTable();
+    renderFilename('receipt', receiptFileNames);
     updateCostBadge('receipt');
 
   } catch (e) {
@@ -705,7 +725,7 @@ function downloadCSVReceipt() {
     const csvDate = r.needsReview ? '' : r.date;
     csv += [csvDate, r.description, r.amount ?? '', r.reduced_tax, r.invoice_class].map(csvField).join(',') + '\n';
   });
-  downloadFile(csv, '領収書.csv');
+  downloadFile(csv, toCsvFilename(receiptFileNames, '領収書.csv'));
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -947,18 +967,15 @@ function runBalanceCheck() {
 }
 
 function renderBankbookTable(errCount = 0) {
-  // ファイル名表示
+  renderFilename('bankbook', bankbookFileNames);
   const infoEl = document.getElementById('bankbook-balance-info');
-  const fileLabel = bankbookFileNames.length
-    ? `<span style="color:#4a5568">📄 ${bankbookFileNames.map(esc).join('、')}</span>`
-    : '';
   const balanceLabel = bankbookData.some(r => r.balance !== '')
     ? (errCount === 0
         ? `<span style="color:#059669;font-weight:700">✓ 残高一致</span>`
         : `<span style="color:#e53e3e;font-weight:700">⚠ 残高不一致 ${errCount}件</span>`)
     : '';
-  infoEl.innerHTML = (fileLabel || balanceLabel)
-    ? `<div style="display:flex;gap:16px;align-items:center;padding:10px 0;font-size:0.9rem">${fileLabel}${balanceLabel}</div>`
+  infoEl.innerHTML = balanceLabel
+    ? `<div style="display:flex;gap:16px;align-items:center;padding:10px 0;font-size:0.9rem">${balanceLabel}</div>`
     : '';
 
   const tbody = document.getElementById('bankbook-tbody');
@@ -988,7 +1005,7 @@ function downloadCSVBankbook() {
   bankbookData.forEach(r => {
     csv += [r.date, r.withdrawal, r.deposit, r.balance, r.description].map(csvField).join(',') + '\n';
   });
-  downloadFile(csv, '通帳.csv');
+  downloadFile(csv, toCsvFilename(bankbookFileNames, '通帳.csv'));
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1025,8 +1042,9 @@ const CARD_PROMPT = `あなたは会計書類OCRの専門家です。このカ�
 【摘要の簡略化ルール】
 - ETCの場合：カード番号（ETC NO）・入口・出口・道路の重複情報を除き「ETC {道路会社名}」のみにすること（例：「ETC 首都高速道路」「ETC 東日本高速道路 関東支社」）`;
 
-let cardData   = [];
-let cardTotals = [];
+let cardData      = [];
+let cardTotals    = [];
+let cardFileNames = [];
 
 async function handleCardUpload(event) {
   const files = Array.from(event.target.files);
@@ -1034,9 +1052,10 @@ async function handleCardUpload(event) {
   if (!files.length) return;
 
   clearError('card');
-  cardData   = [];
-  cardTotals = [];
-  tabCost.card = 0;
+  cardData      = [];
+  cardTotals    = [];
+  cardFileNames = files.map(f => f.name);
+  tabCost.card  = 0;
   resetAbort();
 
   try {
@@ -1090,6 +1109,7 @@ async function handleCardUpload(event) {
     hideProgress('card');
     if (pageErrors.length) showError('card', pageErrors.join('\n'));
     renderCardTable();
+    renderFilename('card', cardFileNames);
     updateCostBadge('card');
 
   } catch (e) {
@@ -1134,7 +1154,7 @@ function downloadCSVCard() {
   cardData.forEach(r => {
     csv += [r.date, r.amount, r.description].map(csvField).join(',') + '\n';
   });
-  downloadFile(csv, 'カード明細.csv');
+  downloadFile(csv, toCsvFilename(cardFileNames, 'カード明細.csv'));
 }
 
 // ─── Unified CSV dispatch ─────────────────────────────────
@@ -1154,18 +1174,21 @@ function recheckBalance() {
 function clearResults(tab) {
   clearError(tab);
   if (tab === 'receipt') {
-    receiptData = [];
+    receiptData = []; receiptFileNames = [];
     document.getElementById('receipt-results').style.display = 'none';
+    document.getElementById('receipt-filename').innerHTML = '';
   } else if (tab === 'bankbook') {
-    bankbookData = [];
+    bankbookData = []; bankbookFileNames = [];
     document.getElementById('bankbook-results').style.display = 'none';
     document.getElementById('bankbook-balance-info').innerHTML = '';
+    document.getElementById('bankbook-filename').innerHTML = '';
     const rb = document.getElementById('btn-recheck');
     if (rb) rb.remove();
   } else if (tab === 'card') {
-    cardData = []; cardTotals = [];
+    cardData = []; cardTotals = []; cardFileNames = [];
     document.getElementById('card-results').style.display = 'none';
     document.getElementById('card-summary').innerHTML = '';
+    document.getElementById('card-filename').innerHTML = '';
   }
 }
 </script>
