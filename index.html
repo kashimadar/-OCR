@@ -871,7 +871,7 @@ async function handleBankbookUpload(event) {
 
       if (abortFlag) break;
       try {
-        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook');
+        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook', 1024);
         for (const item of (result.items || [])) {
           const hasWd  = item.withdrawal != null;
           const hasDep = item.deposit    != null;
