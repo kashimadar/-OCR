@@ -494,6 +494,10 @@ function clearError(tab) {
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+// カタカナの濁点・半濁点を結合（ホ゛→ボ、ハ゜→パ 等）
+function normalizeText(s) {
+  return s ? String(s).normalize('NFC') : '';
+}
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function num(v) { return v != null && v !== '' ? v : ''; }
 
@@ -568,8 +572,8 @@ function receiptToRows(result) {
   if (result.date == null && result.amount_total == null &&
       result.amount_10 == null && result.amount_8 == null) return null;
 
-  const store        = result.store_name ?? '';
-  const purpose      = result.purpose ? result.purpose.trim() : null;
+  const store        = normalizeText(result.store_name);
+  const purpose      = result.purpose ? normalizeText(result.purpose.trim()) : null;
   const renban       = result.renban != null ? String(result.renban) : null;
   const invoiceClass = result.invoice_number ? '' : '区分記載';
   // 0 は「記載なし」扱い
@@ -871,7 +875,7 @@ async function handleBankbookUpload(event) {
 
       if (abortFlag) break;
       try {
-        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook');
+        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook', 1024);
         for (const item of (result.items || [])) {
           const hasWd  = item.withdrawal != null;
           const hasDep = item.deposit    != null;
@@ -882,7 +886,7 @@ async function handleBankbookUpload(event) {
             date:        item.date        ?? '',
             withdrawal:  hasWd  ? item.withdrawal  : '',
             deposit:     hasDep ? item.deposit     : '',
-            description: item.description ?? '',
+            description: normalizeText(item.description),
             balance:     hasBal ? item.balance     : ''
           });
         }
@@ -901,19 +905,35 @@ async function handleBankbookUpload(event) {
       return da < db ? -1 : da > db ? 1 : 0;
     });
 
-    const errCount = runBalanceCheck();
+    const errCount  = runBalanceCheck();
+    const dateGaps  = detectDateGaps(bankbookData, 30); // 30日以上の空白を検出
 
     showProgress('bankbook', abortFlag ? '中止しました' : '完了', 100);
     await sleep(400);
     hideProgress('bankbook');
     if (pageErrors.length) showError('bankbook', pageErrors.join('\n'));
-    renderBankbookTable(errCount);
+    renderBankbookTable(errCount, dateGaps);
     updateCostBadge('bankbook');
 
   } catch (e) {
     hideProgress('bankbook');
     showError('bankbook', e.message);
   }
+}
+
+// 連続する取引の間に thresholdDays 日以上の空白があれば返す（最後の行以降は対象外）
+function detectDateGaps(data, thresholdDays) {
+  const gaps = [];
+  const dated = data.filter(r => r.date && r.date.match(/^\d{4}\/\d{2}\/\d{2}$/));
+  for (let i = 0; i < dated.length - 1; i++) {  // ← length-1 で最後の行以降は無視
+    const d1 = new Date(dated[i].date);
+    const d2 = new Date(dated[i + 1].date);
+    const days = Math.round((d2 - d1) / 86400000);
+    if (days >= thresholdDays) {
+      gaps.push({ from: dated[i].date, to: dated[i + 1].date, days });
+    }
+  }
+  return gaps;
 }
 
 function runBalanceCheck() {
@@ -1026,7 +1046,7 @@ function runBalanceCheck() {
   return errCount;
 }
 
-function renderBankbookTable(errCount = 0) {
+function renderBankbookTable(errCount = 0, dateGaps = []) {
   // ファイル名表示
   const infoEl = document.getElementById('bankbook-balance-info');
   const fileLabel = bankbookFileNames.length
@@ -1046,9 +1066,17 @@ function renderBankbookTable(errCount = 0) {
     }
   }
   const balanceLabel = statusParts.join(' &nbsp; ');
-  infoEl.innerHTML = (fileLabel || balanceLabel)
-    ? `<div style="display:flex;gap:16px;align-items:center;padding:10px 0;font-size:0.9rem">${fileLabel}${balanceLabel}</div>`
+  const gapHtml = dateGaps.length
+    ? dateGaps.map(g =>
+        `<div class="alert alert-warn" style="margin:6px 0;font-size:0.88rem">
+          ⚠ データが抜けている可能性があります：${esc(g.from)} 〜 ${esc(g.to)}（約${g.days}日間の空白）
+        </div>`
+      ).join('')
     : '';
+  infoEl.innerHTML =
+    (fileLabel || balanceLabel
+      ? `<div style="display:flex;gap:16px;align-items:center;padding:10px 0;font-size:0.9rem">${fileLabel}${balanceLabel}</div>`
+      : '') + gapHtml;
 
   const tbody = document.getElementById('bankbook-tbody');
   tbody.innerHTML = bankbookData.map((r, i) => {
@@ -1168,7 +1196,7 @@ async function handleCardUpload(event) {
           cardData.push({
             date:        item.date        ?? '',
             amount:      item.amount      != null ? item.amount : '',
-            description: item.description ?? ''
+            description: normalizeText(item.description)
           });
         }
         if (result.total != null) cardTotals.push(result.total);
@@ -1242,7 +1270,8 @@ function downloadCSV(tab) {
 function recheckBalance() {
   if (!bankbookData.length) return;
   const errCount = runBalanceCheck();
-  renderBankbookTable(errCount);
+  const dateGaps = detectDateGaps(bankbookData, 30);
+  renderBankbookTable(errCount, dateGaps);
 }
 
 // ─── Clear results ────────────────────────────────────────
