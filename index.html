@@ -44,7 +44,6 @@
     .progress-text { font-size: 0.9rem; color: #4a5568; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
     .progress-bar-wrap { background: #e2e8f0; border-radius: 99px; height: 7px; overflow: hidden; }
     .progress-bar { background: #3b82f6; height: 7px; border-radius: 99px; transition: width 0.35s ease; width: 0%; }
-    .progress-remaining { font-size: 0.85rem; color: #718096; margin-top: 6px; min-height: 1.2em; }
 
     /* Results */
     .results-area { background: #fff; border-radius: 10px; padding: 20px; margin: 14px 0; display: none; border: 1px solid #e2e8f0; }
@@ -67,17 +66,8 @@
     td[contenteditable=true]:focus { background: #fffbeb; box-shadow: inset 0 0 0 2px #f59e0b; }
     tr.row-error { background: #fff5f5 !important; }
     tr.row-error td { color: #c53030; }
-    tr.row-review { background: #fff0f0 !important; }
-    tr.row-review td { color: #c53030; }
-    tr.row-duplicate { background: #fffde7 !important; }
     .check-ok { color: #059669; font-weight: 700; }
     .check-ng { color: #e53e3e; font-weight: 700; }
-    .check-fixed { color: #38a169; font-weight: 700; font-size: 0.82rem; }
-    tr.row-autofixed { background: #f0fff4 !important; }
-    .btn-del-row { padding: 2px 8px; background: #e53e3e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
-    .btn-del-row:hover { background: #c53030; }
-    .flag-review { font-size: 0.75rem; background: #e53e3e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
-    .flag-dup { font-size: 0.75rem; background: #d69e2e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
 
     /* Alerts */
     .alert { padding: 11px 16px; border-radius: 7px; margin: 10px 0; font-size: 0.9rem; line-height: 1.5; }
@@ -97,6 +87,17 @@
     /* Misc */
     .tip { font-size: 0.82rem; color: #a0aec0; margin-top: 4px; }
     .count-badge { background: #3b82f6; color: #fff; border-radius: 99px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; margin-left: 6px; }
+    .elapsed-badge { font-size: 0.82rem; color: #718096; margin-left: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    tr.row-autofix { background: #fffbeb !important; }
+    tr.row-autofix td { color: #92400e; }
+    tr.row-confirm { background: #fff5f5 !important; }
+    tr.row-confirm td { color: #c53030; }
+    .check-fix { color: #d97706; font-weight: 700; cursor: help; border-bottom: 1px dashed #d97706; white-space: nowrap; }
+    .check-confirm { color: #e53e3e; font-weight: 700; }
+    #receipt-warn-tbody tr { background: #fff5f5; }
+    #receipt-warn-tbody tr:hover { background: #fed7d7 !important; }
+    #receipt-warn-tbody td { color: #9b2c2c; }
+    .receipt-flag { display: inline-block; font-size: 0.73rem; font-weight: 700; color: #c53030; background: #fed7d7; border-radius: 3px; padding: 1px 5px; white-space: nowrap; vertical-align: middle; cursor: default; border: 1px solid #fc8181; }
   </style>
 </head>
 <body>
@@ -133,13 +134,12 @@
 
     <div id="receipt-progress" class="progress-area">
       <div style="display:flex;align-items:center;justify-content:space-between">
-        <div class="progress-text" id="receipt-progress-text"><span class="spinner"></span><span id="receipt-progress-msg">処理中...</span></div>
+        <div class="progress-text" id="receipt-progress-text"><span class="spinner"></span><span id="receipt-progress-msg">処理中...</span><span class="elapsed-badge" id="receipt-elapsed"></span></div>
         <button class="btn-abort" onclick="abortProcessing()">■ 中止</button>
       </div>
       <div class="progress-bar-wrap"><div class="progress-bar" id="receipt-progress-bar"></div></div>
     </div>
     <div id="receipt-error"></div>
-    <div id="receipt-filename"></div>
 
     <div id="receipt-results" class="results-area">
       <div class="results-header">
@@ -153,21 +153,29 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>P.</th><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th><th>操作</th></tr></thead>
+          <thead><tr><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th></tr></thead>
           <tbody id="receipt-tbody"></tbody>
         </table>
+      </div>
+
+      <!-- 要確認セクション：日付・金額が欠落した行を別表示 -->
+      <div id="receipt-warn-section" style="display:none; margin-top:20px; border-top:2px solid #fed7d7; padding-top:16px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
+          <h4 style="color:#c53030;font-size:0.95rem;font-weight:700;">⚠ 要確認 <span id="receipt-warn-count">0</span>件</h4>
+          <span style="font-size:0.82rem;color:#718096">日付・金額が読み取れなかった行です。内容を確認・修正してください（CSVにも出力されます）</span>
+        </div>
+        <div class="table-wrap" style="border-color:#fed7d7;">
+          <table>
+            <thead style="background:#fff5f5;"><tr><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th><th>問題</th></tr></thead>
+            <tbody id="receipt-warn-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- ── Bankbook Tab ── -->
   <div id="tab-bankbook" class="tab-panel">
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-      <label style="font-size:0.88rem;color:#4a5568;font-weight:600;white-space:nowrap;">🗓 基準年（通帳の年度表記の基準）</label>
-      <input type="number" id="bankbook-base-year" value="2025" min="2000" max="2099"
-        style="width:90px;padding:5px 8px;border:1px solid #cbd5e0;border-radius:5px;font-size:0.9rem;">
-      <span class="tip">07→基準年、08→基準年+1 として変換。例：基準年2025 → 07-12-25 = 2025/12/25</span>
-    </div>
     <label class="upload-area" id="bankbook-drop" for="bankbook-file">
       <span class="upload-icon">🏦</span>
       <p><strong>通帳スキャン</strong> をここにドロップ、またはクリックして選択</p>
@@ -178,14 +186,12 @@
 
     <div id="bankbook-progress" class="progress-area">
       <div style="display:flex;align-items:center;justify-content:space-between">
-        <div class="progress-text" id="bankbook-progress-text"><span class="spinner"></span><span id="bankbook-progress-msg">処理中...</span></div>
+        <div class="progress-text" id="bankbook-progress-text"><span class="spinner"></span><span id="bankbook-progress-msg">処理中...</span><span class="elapsed-badge" id="bankbook-elapsed"></span></div>
         <button class="btn-abort" onclick="abortProcessing()">■ 中止</button>
       </div>
       <div class="progress-bar-wrap"><div class="progress-bar" id="bankbook-progress-bar"></div></div>
     </div>
     <div id="bankbook-error"></div>
-    <div id="bankbook-filename"></div>
-    <div id="bankbook-note"></div>
 
     <div id="bankbook-results" class="results-area">
       <div class="results-header">
@@ -197,12 +203,11 @@
       <div class="action-row">
         <button class="btn-clear" onclick="clearResults('bankbook')">クリア</button>
         <button style="padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem" onclick="recheckBalance()">残高再チェック</button>
-        <span id="recheck-done" style="display:none;color:#059669;font-size:0.85rem;font-weight:600">✓ チェックしました</span>
         <span class="tip">出金・入金・残高を編集後、「残高再チェック」で再計算できます。</span>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>P.</th><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
+          <thead><tr><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
           <tbody id="bankbook-tbody"></tbody>
         </table>
       </div>
@@ -221,13 +226,12 @@
 
     <div id="card-progress" class="progress-area">
       <div style="display:flex;align-items:center;justify-content:space-between">
-        <div class="progress-text" id="card-progress-text"><span class="spinner"></span><span id="card-progress-msg">処理中...</span></div>
+        <div class="progress-text" id="card-progress-text"><span class="spinner"></span><span id="card-progress-msg">処理中...</span><span class="elapsed-badge" id="card-elapsed"></span></div>
         <button class="btn-abort" onclick="abortProcessing()">■ 中止</button>
       </div>
       <div class="progress-bar-wrap"><div class="progress-bar" id="card-progress-bar"></div></div>
     </div>
     <div id="card-error"></div>
-    <div id="card-filename"></div>
 
     <div id="card-results" class="results-area">
       <div class="results-header">
@@ -242,7 +246,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>P.</th><th>日付</th><th>出金 (円)</th><th>摘要 / 利用先</th></tr></thead>
+          <thead><tr><th>日付</th><th>出金 (円)</th><th>摘要 / 利用先</th></tr></thead>
           <tbody id="card-tbody"></tbody>
         </table>
       </div>
@@ -262,7 +266,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 const GEMINI_MODEL    = 'gemini-2.5-flash';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-const CONCURRENCY     = 10;
+const REQUEST_DELAY   = 300;
 // Gemini 2.5 Flash 料金 (USD/1M tokens) ※ Standard Tier
 // 参照: https://ai.google.dev/gemini-api/docs/pricing
 const PRICE_INPUT  = 0.30;  // テキスト・画像・動画
@@ -271,6 +275,27 @@ const JPY_RATE     = 150;   // 円換算レート（概算）
 
 let abortFlag = false;
 let tabCost   = { receipt: 0, bankbook: 0, card: 0 }; // USD
+let _timerInterval = null;
+let _timerStart    = null;
+let _timerTab      = null;
+
+function startTimer(tab) {
+  clearInterval(_timerInterval);
+  _timerStart = Date.now();
+  _timerTab   = tab;
+  const el = document.getElementById(tab + '-elapsed');
+  if (el) el.textContent = '⏱ 0秒';
+  _timerInterval = setInterval(() => {
+    const s = Math.floor((Date.now() - _timerStart) / 1000);
+    const e = document.getElementById(_timerTab + '-elapsed');
+    if (e) e.textContent = `⏱ ${s}秒`;
+  }, 500);
+}
+
+function stopTimer() {
+  clearInterval(_timerInterval);
+  _timerInterval = null;
+}
 
 function abortProcessing() {
   abortFlag = true;
@@ -278,20 +303,6 @@ function abortProcessing() {
 
 function resetAbort() {
   abortFlag = false;
-}
-
-// 並列実行ヘルパー（結果は元の順序を保持）
-async function runWithConcurrency(tasks, limit) {
-  const results = new Array(tasks.length);
-  let nextIdx = 0;
-  async function worker() {
-    while (nextIdx < tasks.length) {
-      const i = nextIdx++;
-      results[i] = await tasks[i]();
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
-  return results;
 }
 
 function addCost(tab, inputTokens, outputTokens) {
@@ -355,35 +366,20 @@ function setupDrop(dropId, fileId, handler) {
 }
 
 // ─── PDF → base64 images ─────────────────────────────────
-function isBlankCanvas(canvas, threshold = 253) {
-  const ctx  = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  const step = Math.max(1, Math.floor(Math.sqrt(w * h / 8000)));
-  const data = ctx.getImageData(0, 0, w, h).data;
-  let sum = 0, count = 0;
-  for (let y = 0; y < h; y += step) {
-    for (let x = 0; x < w; x += step) {
-      const idx = (y * w + x) * 4;
-      sum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-      count++;
-    }
-  }
-  return count > 0 && (sum / count) >= threshold;
-}
-
 async function pdfToImages(file, scale = 2.0) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const results = await Promise.all(Array.from({ length: pdf.numPages }, async (_, i) => {
-    const page     = await pdf.getPage(i + 1);
+  const images = [];
+  for (let pg = 1; pg <= pdf.numPages; pg++) {
+    const page     = await pdf.getPage(pg);
     const viewport = page.getViewport({ scale });
     const canvas   = document.createElement('canvas');
     canvas.width   = viewport.width;
     canvas.height  = viewport.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    return canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
-  }));
-  return results.filter(d => d !== null);
+    images.push(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
+  }
+  return images;
 }
 
 async function fileToBase64(file) {
@@ -413,7 +409,7 @@ async function fileToImages(file) {
 }
 
 // ─── Gemini API ───────────────────────────────────────────
-async function callGemini(prompt, imageData, imageMime, retries = 2, tab = null) {
+async function callGemini(prompt, imageData, imageMime, retries = 3, tab = null, thinkingBudget = 8192) {
   const key = getApiKey();
   if (!key) throw new Error('Gemini APIキーが未設定です。ヘッダーのAPIキー欄に入力して「保存」してください。');
 
@@ -422,10 +418,9 @@ async function callGemini(prompt, imageData, imageMime, retries = 2, tab = null)
       { text: prompt },
       { inline_data: { mime_type: imageMime, data: imageData } }
     ]}],
-    generationConfig: { temperature: 0.1, thinkingConfig: { thinkingBudget: 0 } }
+    generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget } }
   };
 
-  let consecutive429 = 0;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = await fetch(`${GEMINI_ENDPOINT}?key=${key}`, {
       method: 'POST',
@@ -437,28 +432,15 @@ async function callGemini(prompt, imageData, imageMime, retries = 2, tab = null)
       const err = await res.json().catch(() => ({}));
       const msg = err.error?.message || `HTTP ${res.status}`;
       if (res.status === 401 || res.status === 403) throw new Error(`APIキーが無効または権限がありません: ${msg}`);
+      // Retryable errors: rate limit or high demand
       const isRetryable = res.status === 429 || res.status === 503 || msg.includes('high demand') || msg.includes('overloaded');
       if (isRetryable && attempt < retries) {
-        if (res.status === 429) {
-          consecutive429++;
-          if (consecutive429 >= 3) {
-            const msgEl = tab ? document.getElementById(tab + '-progress-msg') : null;
-            for (let s = 2; s > 0; s--) {
-              if (msgEl) msgEl.textContent = `レート制限 リトライ待機... ${s}秒`;
-              await sleep(500);
-              if (msgEl) msgEl.textContent = `レート制限 リトライ待機... ${s - 0.5}秒`;
-              await sleep(500);
-            }
-            consecutive429 = 0;
-          }
-        } else {
-          consecutive429 = 0;
-        }
+        const wait = res.status === 429 ? 3000 : (attempt + 1) * 5000;
+        await sleep(wait);
         continue;
       }
       throw new Error(`Gemini APIエラー: ${msg}`);
     }
-    consecutive429 = 0;
 
     const data = await res.json();
 
@@ -498,6 +480,7 @@ function showProgress(tab, msg, pct) {
 }
 function hideProgress(tab) {
   document.getElementById(tab + '-progress').style.display = 'none';
+  stopTimer();
 }
 function showError(tab, msg) {
   document.getElementById(tab + '-error').innerHTML =
@@ -524,20 +507,6 @@ function bindEditable(tbody, dataArray) {
   });
 }
 
-// ─── Filename helpers ─────────────────────────────────────
-function renderFilename(tab, fileNames) {
-  const el = document.getElementById(tab + '-filename');
-  if (!el) return;
-  el.innerHTML = fileNames.length
-    ? `<div style="font-size:0.88rem;color:#4a5568;padding:4px 2px">📄 ${fileNames.map(esc).join('　')}</div>`
-    : '';
-}
-
-function toCsvFilename(fileNames, fallback) {
-  if (!fileNames.length) return fallback;
-  return fileNames[0].replace(/\.[^.]+$/, '') + '.csv';
-}
-
 // ─── CSV export ───────────────────────────────────────────
 function csvField(v) {
   const s = String(v ?? '');
@@ -559,13 +528,13 @@ function downloadFile(content, filename) {
 const RECEIPT_PROMPT = `以下のレシート・領収書画像から情報を抽出し、JSON形式のみで返してください。
 
 {
-  "date": "日付 YYYY/MM/DD形式。以下のルールで変換する。①和暦（令和N年=2018+N年。例：令和7=2025、令和8=2026、令和6=2024、令和5=2023、令和4=2022、令和3=2021、令和2=2020、令和1=2019、平成N年=1988+N年）②令和をRまたは数字2桁で略記した形式（例：07-11-12→令和7年→2025/11/12、08-11-12→令和8年→2026/11/12、R7.11.12→2025/11/12、R8.11.12→2026/11/12）③西暦下2桁表記（例：25年09月30日→2025/09/30、26年01月01日→2026/01/01）④読み取れない場合はnull",
+  "date": "日付 YYYY/MM/DD形式、和暦は西暦変換（令和8=2026、令和7=2025、令和6=2024、令和5=2023、令和4=2022、令和3=2021、令和2=2020、令和1=2019、平成N年=1988+N年）",
   "store_name": "店名（判読不能は「（手書き 店名不明）」）",
-  "purpose": "何の代金かを必ず具体的に付記する。印字・手書き問わず但し書き・品名・サービス内容から判断し「住民票代」「郵便料金」「飲食代」「消耗品代」「交通費」等を記載。複数品目混在の場合は「各種消耗品」等。不明な場合のみnull",
+  "purpose": "支払内容を必ず「○○代」「○○費」「○○料金」の形で記載すること。但し書きがなくても【レシートに記載された品目・サービス内容から推定】すること。推定例：食品・飲料・弁当が多い→「飲食代」、文房具・コピー用紙→「消耗品代」、医薬品・サプリ→「医薬品代」、書籍・雑誌→「書籍代」、ガソリン・軽油→「燃料代」、衣類→「被服費」、日用品が混在→「日用品代」。複数カテゴリが混在して全く判断できない場合は「各種購入代」とし、絶対にnullにしないこと",
   "renban": "一連No.数字のみ、なければnull",
-  "invoice_number": "適格請求書発行事業者の登録番号。「登録番号」「登録No」「インボイス番号」等のラベルの後に続くT+13桁の数字を抽出。例：「登録番号：T1013301024541」→「T1013301024541」。画像内にTで始まる13桁の数字が少しでも読み取れる場合は必ず抽出すること。なければnull",
-  "is_nontax": "非課税取引（医療費・郵便切手・収入印紙・土地等）の場合はtrue、それ以外はfalse",
-  "tax_ambiguous": "課税区分の判断根拠が不明確な場合はtrue、明確に判断できる場合はfalse",
+  "invoice_number": "T+13桁、なければnull",
+  "is_nontax": "非課税取引（医療費・郵便切手・土地等）の場合はtrue、それ以外はfalse",
+  "tax_class": "課税区分を以下から1つ選ぶ: '10'=標準税率10%のみ / '8'=軽減税率8%のみ（食品・新聞等） / 'mixed'=10%と8%が混在 / 'nontax'=非課税 / 'unknown'=判断できない",
   "amount_10": "10%対象税込金額 数値のみ、なければnull",
   "amount_8": "8%対象税込金額 数値のみ、なければnull",
   "amount_total": "合計税込金額 数値のみ"
@@ -573,13 +542,29 @@ const RECEIPT_PROMPT = `以下のレシート・領収書画像から情報を�
 
 注意：
 - 金額はカンマなし数値のみ
+- tax_classが'mixed'の場合はamount_10とamount_8の両方を必ず記入
+- tax_classが'nontax'の場合はis_nontaxもtrueにすること
 - 税率区別が明示されていない場合はamount_totalのみ、amount_10/8はnull
 - レシート以外のページはすべてnullで返す`;
 
 let receiptData = [];
-let receiptFileNames = [];
+
+// 日付の妥当性チェック: 'ok' | 'no_date' | 'invalid' | 'future' | 'old'
+function validateReceiptDate(dateStr) {
+  if (!dateStr || String(dateStr).trim() === '') return 'no_date';
+  const m = String(dateStr).match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (!m) return 'invalid';
+  const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+  if (isNaN(d.getTime())) return 'invalid';
+  const now = new Date();
+  const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
+  if (d > now)           return 'future';
+  if (d < fiveYearsAgo)  return 'old';
+  return 'ok';
+}
 
 function receiptToRows(result) {
+  // 金額・日付がすべてnull → レシートなし
   if (result.date == null && result.amount_total == null &&
       result.amount_10 == null && result.amount_8 == null) return null;
 
@@ -587,43 +572,54 @@ function receiptToRows(result) {
   const purpose      = result.purpose ? result.purpose.trim() : null;
   const renban       = result.renban != null ? String(result.renban) : null;
   const invoiceClass = result.invoice_number ? '' : '区分記載';
-  const isMixed      = result.amount_10 != null && result.amount_8 != null;
-  const isNontax     = !!result.is_nontax;
-  const isAmbiguous  = !!result.tax_ambiguous;
-  const has8only     = result.amount_8 != null && result.amount_10 == null && !isMixed;
+  // 0 は「記載なし」扱い
+  const amount10 = (result.amount_10 != null && result.amount_10 !== 0) ? result.amount_10 : null;
+  const amount8  = (result.amount_8  != null && result.amount_8  !== 0) ? result.amount_8  : null;
+  const isMixed      = amount10 != null && amount8 != null;
+  const hasAmount    = result.amount_total != null || amount10 != null || amount8 != null;
   const date         = result.date ?? '';
 
-  // 日付バリデーション（空欄 or 5年超前 or 未来）
-  let needsReview = !date;
-  if (date && !needsReview) {
-    const d = new Date(date);
-    const now = new Date();
-    const limit = new Date(); limit.setFullYear(now.getFullYear() - 5);
-    if (isNaN(d.getTime()) || d > now || d < limit) needsReview = true;
-  }
+  // tax_class 優先、なければ is_nontax からフォールバック
+  const taxClass = result.tax_class
+    ?? (result.is_nontax ? 'nontax' : 'unknown');
+
+  // 日付・金額・用途バリデーション → flagフィールドに記録
+  const dateStatus = validateReceiptDate(date);
+  let flag = null;
+  if (dateStatus !== 'ok')  flag = dateStatus;
+  else if (!hasAmount)      flag = 'no_amount';
+
+  const purposeText = purpose ?? '';
 
   function desc(taxLabel) {
     let s = store;
-    if (purpose) s += ` ${purpose}`;
+    if (purposeText) s += ` ${purposeText}`;
     if (isMixed) {
       s += ` ${taxLabel}分`;
       if (renban) s += ` 一連${renban}`;
     }
-    if (isNontax)           s += '（非課税）';
-    else if (has8only || taxLabel === '8%') s += '（軽減8%）';
-    else if (isAmbiguous)   s += '（課税区分不明）';
+    // 税区分サフィックス
+    if (taxLabel === '8%') {
+      s += '（軽減8%）';
+    } else if (taxLabel !== '10%') {
+      // 単一行の場合
+      if      (taxClass === 'nontax')  s += '（非課税）';
+      else if (taxClass === '8')       s += '（軽減8%）';
+      else if (taxClass === 'unknown') s += '（課税区分不明）';
+    }
     return s;
   }
 
-  const base = { needsReview, isDuplicate: false, storeKey: store };
   if (isMixed) {
     return [
-      { ...base, date, description: desc('10%'), amount: result.amount_10, reduced_tax: '',  invoice_class: invoiceClass },
-      { ...base, date, description: desc('8%'),  amount: result.amount_8,  reduced_tax: '※', invoice_class: invoiceClass }
+      { date, description: desc('10%'), amount: amount10, reduced_tax: '',  invoice_class: invoiceClass, flag },
+      { date, description: desc('8%'),  amount: amount8,  reduced_tax: '※', invoice_class: invoiceClass, flag }
     ];
   }
+  // 片方だけ残っている場合（もう一方が0だった）はその値を使う
+  const singleAmount = result.amount_total ?? amount10 ?? amount8;
   return [
-    { ...base, date, description: desc(''), amount: result.amount_total, reduced_tax: has8only ? '※' : '', invoice_class: invoiceClass }
+    { date, description: desc(''), amount: singleAmount, reduced_tax: amount8 != null ? '※' : '', invoice_class: invoiceClass, flag }
   ];
 }
 
@@ -634,14 +630,15 @@ async function handleReceiptUpload(event) {
 
   clearError('receipt');
   receiptData = [];
-  receiptFileNames = files.map(f => f.name);
   tabCost.receipt = 0;
   resetAbort();
+  startTimer('receipt');
 
   try {
+    // ── Phase 1: 全ページを一括で canvas → base64 変換 ──────────
     const allImgs = [];
     for (const f of files) {
-      showProgress('receipt', `ファイル読み込み中: ${f.name}`, 5);
+      showProgress('receipt', `変換中: ${f.name}`, 5);
       const imgs = await fileToImages(f);
       allImgs.push(...imgs);
     }
@@ -649,46 +646,57 @@ async function handleReceiptUpload(event) {
     const total = allImgs.length;
     if (total === 0) throw new Error('画像を取得できませんでした');
 
+    showProgress('receipt', `0 / ${total} ページ完了`, 10);
+
+    // ── Phase 2: 3件ずつ並列送信・返ってきた順にテーブル追加 ──────
+    const BATCH_SIZE = 5;
+    let   completed  = 0;
     const pageErrors = [];
-    const startTime = Date.now();
-    let completed = 0;
+    const seenKeys   = new Set(); // 両面スキャン重複除外
 
-    const pageResults = await runWithConcurrency(allImgs.map((img, i) => async () => {
-      if (abortFlag) return null;
+    const processOne = async (img, pageNum) => {
+      if (abortFlag) return;
       try {
-        const result = await callGemini(RECEIPT_PROMPT, img.data, img.mime, 2, 'receipt');
-        return { result, page: i + 1 };
-      } catch (e) {
-        if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-        pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
-        return null;
-      } finally {
-        completed++;
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
-        showProgress('receipt', `${completed} / ${total} ページ処理中... 経過${elapsed}秒`, Math.round(10 + completed / total * 85));
-      }
-    }), CONCURRENCY);
+        const result = await callGemini(RECEIPT_PROMPT, img.data, img.mime, 3, 'receipt', 512);
+        if (abortFlag) return;
 
-    // 順序を保ったまま両面重複除外→データ収集
-    let lastKey = null;
-    for (const item of pageResults) {
-      if (!item) continue;
-      const { result, page } = item;
-      const rows = receiptToRows(result);
-      if (!rows) continue;
-      const key = `${result.date}_${result.store_name}_${result.amount_total ?? result.amount_10}`;
-      if (key === lastKey) continue;
-      lastKey = key;
-      rows.forEach(r => r.page = page);
-      receiptData.push(...rows);
+        const rows = receiptToRows(result);
+        if (!rows) return;
+
+        // 両面スキャン重複除外（日付・店名・金額が同一なら skip）
+        const key = `${result.date}_${result.store_name}_${result.amount_total ?? result.amount_10}`;
+        if (seenKeys.has(key)) return;
+        seenKeys.add(key);
+
+        receiptData.push(...rows);
+        renderReceiptTable(); // 返ってきた順に随時追加表示
+      } catch (e) {
+        if (e.message.includes('APIキー') || e.message.includes('無効')) throw e;
+        pageErrors.push(`ページ ${pageNum}: ${e.message}`);
+      }
+    };
+
+    for (let i = 0; i < total; i += BATCH_SIZE) {
+      if (abortFlag) break;
+
+      const slice = allImgs.slice(i, Math.min(i + BATCH_SIZE, total));
+      await Promise.all(
+        slice.map((img, bi) =>
+          processOne(img, i + bi + 1).finally(() => {
+            completed++;
+            const pct = Math.round(10 + (completed / total) * 85);
+            showProgress('receipt', `${completed} / ${total} ページ完了`, pct);
+          })
+        )
+      );
     }
 
-    showProgress('receipt', abortFlag ? '中止しました' : '完了', 100);
+    showProgress('receipt',
+      abortFlag ? `中止（${completed} / ${total} 完了）` : `完了（${total} ページ）`, 100);
     await sleep(400);
     hideProgress('receipt');
     if (pageErrors.length) showError('receipt', pageErrors.join('\n'));
     renderReceiptTable();
-    renderFilename('receipt', receiptFileNames);
     updateCostBadge('receipt');
 
   } catch (e) {
@@ -697,126 +705,138 @@ async function handleReceiptUpload(event) {
   }
 }
 
-function renderReceiptTable() {
-  const tbody = document.getElementById('receipt-tbody');
-  tbody.innerHTML = receiptData.map((r, i) => {
-    const rowClass = r.needsReview ? 'row-review' : '';
-    const dateCell = r.needsReview
-      ? `<span class="flag-review">要確認</span>${esc(r.date)}`
-      : esc(r.date);
-    return `
-    <tr class="${rowClass}">
-      <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="date">${dateCell}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="reduced_tax">${esc(r.reduced_tax)}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="invoice_class">${esc(r.invoice_class)}</td>
-      <td><button class="btn-del-row" onclick="deleteReceiptRow(${i})">削除</button></td>
-    </tr>`;
-  }).join('');
+const RECEIPT_FLAG_LABELS = {
+  no_date:    '日付なし',
+  invalid:    '日付異常',
+  future:     '未来日付',
+  old:        '5年以上前',
+  no_amount:  '金額なし',
+};
 
-  bindEditable(tbody, receiptData);
-  document.getElementById('receipt-count').textContent = receiptData.length;
-  document.getElementById('receipt-results').style.display = receiptData.length ? 'block' : 'none';
+// 1行分の <tr> を生成（isWarn=true のとき問題列セルを追加）
+function renderReceiptRow(r, i, isWarn) {
+  const flagLabel = RECEIPT_FLAG_LABELS[r.flag] ?? '';
+  const extraCell = isWarn
+    ? `<td><span class="receipt-flag">⚠ ${flagLabel}</span></td>`
+    : '';
+  return `<tr>
+    <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
+    <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
+    <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
+    <td contenteditable="true" data-idx="${i}" data-field="reduced_tax">${esc(r.reduced_tax)}</td>
+    <td contenteditable="true" data-idx="${i}" data-field="invoice_class">${esc(r.invoice_class)}</td>
+    ${extraCell}
+  </tr>`;
 }
 
-function deleteReceiptRow(i) {
-  receiptData.splice(i, 1);
-  renderReceiptTable();
+function renderReceiptTable() {
+  const tbody     = document.getElementById('receipt-tbody');
+  const warnTbody = document.getElementById('receipt-warn-tbody');
+
+  // フラグなし（正常行）とフラグあり（要確認行）に分割
+  const okPairs   = [];
+  const warnPairs = [];
+  receiptData.forEach((r, i) => {
+    if (r.flag) warnPairs.push({ r, i });
+    else        okPairs.push({ r, i });
+  });
+
+  // 正常テーブル
+  tbody.innerHTML = okPairs.map(({ r, i }) => renderReceiptRow(r, i, false)).join('');
+  bindEditable(tbody, receiptData);
+  document.getElementById('receipt-count').textContent = okPairs.length;
+
+  // 要確認テーブル
+  const warnSection = document.getElementById('receipt-warn-section');
+  const warnCountEl = document.getElementById('receipt-warn-count');
+  if (warnPairs.length > 0) {
+    warnTbody.innerHTML = warnPairs.map(({ r, i }) => renderReceiptRow(r, i, true)).join('');
+    bindEditable(warnTbody, receiptData);
+    warnCountEl.textContent   = warnPairs.length;
+    warnSection.style.display = 'block';
+  } else {
+    warnTbody.innerHTML       = '';
+    warnSection.style.display = 'none';
+  }
+
+  document.getElementById('receipt-results').style.display = 'block';
 }
 
 function downloadCSVReceipt() {
   const BOM = '﻿';
   let csv = BOM + '日付,摘要,金額,軽減税率,請求書区分\n';
   receiptData.forEach(r => {
-    const csvDate = r.needsReview ? '' : r.date;
-    csv += [csvDate, r.description, r.amount ?? '', r.reduced_tax, r.invoice_class].map(csvField).join(',') + '\n';
+    csv += [r.date, r.description, r.amount ?? '', r.reduced_tax, r.invoice_class].map(csvField).join(',') + '\n';
   });
-  downloadFile(csv, toCsvFilename(receiptFileNames, '領収書.csv'));
+  downloadFile(csv, '領収書.csv');
 }
 
 // ═══════════════════════════════════════════════════════════
 //  FEATURE ②  BANKBOOK
 // ═══════════════════════════════════════════════════════════
-function getBankbookPrompt(baseYear) {
-  const ry     = baseYear - 2018;
-  const ryStr  = String(ry).padStart(2, '0');
-  const ryStr1 = String(ry + 1).padStart(2, '0');
-  const wyStr  = String(baseYear).slice(2);
-  const wyStr1 = String(baseYear + 1).slice(2);
-  return `あなたは日本の銀行通帳のOCRエキスパートです。
-通帳画像から取引データを正確に抽出し、JSON形式で返してください。
+const BANKBOOK_PROMPT = `あなたは会計書類OCRの専門家です。この通帳・銀行明細画像から全ての取引を正確に抽出してください。
 
-必ず以下のJSON形式だけで回答してください（説明文・コードブロック不要）:
+必ず以下のJSON形式だけで返してください（説明文・コードブロック不要）:
 {
   "items": [
     {
       "date": "YYYY/MM/DD",
       "withdrawal": 数値またはnull,
       "deposit": 数値またはnull,
-      "balance": 数値またはnull,
-      "description": "摘要文字列"
+      "description": "摘要",
+      "balance": 数値またはnull
     }
   ]
 }
 
-### 入出金の判断ルール（最重要）
-- **必ず列の物理的な位置で判断すること**
-- 「お支払金額」「出金」「引落」列に記載された金額 → withdrawal（出金）
-- 「お預り金額」「入金」「預入」列に記載された金額 → deposit（入金）
-- 摘要の文言（「払戻」「振込」「為替」「払込」等）で入出金を判断しないこと
-- 「払戻」「払込」は出金列に記載されることもあるため、列位置のみで判断する
-- 「為替手数料」「振込手数料」は通常出金列の小額取引。入金列に記載がない限り出金とする
-- アスタリスク(*)は列内の区切り文字。「*441,383」のように出金列にある場合は withdrawal: 441383 とする。残高列の「*519,399*」とは別物
-- 出金列・入金列・残高列の物理的な左右位置を最優先し、金額の前後の*の有無で列を判断しないこと
+【日付】
+- 和暦→西暦変換: 令和8=2026、令和7=2025、令和6=2024、令和5=2023、令和4=2022、令和3=2021
+- 月日のみの行は直前の行の年を引き継ぐ
+- 【行番号に注意 — 最重要】この通帳では各行の左端に小さい行番号（上付き数字）が印刷されている。行番号は日付ではない
+  - 日付形式は「YY-MM-DD」（和暦2桁-月2桁-日2桁）
+  - 例: 「¹³08-01-13」→ 行番号=13、日付=08-01-13（令和8年1月13日=2026/01/13）← 月は「01」
+  - 例: 「⁸08-01-08」→ 行番号=8、日付=08-01-08（令和8年1月8日=2026/01/08） ← 月は「01」
+  - 行番号の最後の数字と和暦年の最初の数字が連続して見えても、必ず「YY-MM-DD」の3組に分割して読むこと
+  - 「08-01-13」は「年=08、月=01、日=13」であり「年=08、月=08、日=13」ではない
 
-### 日付のルール
-- 通帳の日付形式を YYYY/MM/DD に変換する
-- 年度の変換ルール（最優先・この通帳専用の設定）：
-  - この通帳の「${ryStr}」は令和${ry}年 = ${baseYear}年を意味します
-  - 「${ryStr}-」で始まる日付 → ${baseYear}年（例：${ryStr}-12-25 → ${baseYear}/12/25）
-  - 「${ryStr1}-」で始まる日付 → ${baseYear + 1}年（例：${ryStr1}-1-5 → ${baseYear + 1}/01/05）
-  - 「${wyStr}--」で始まる日付 → ${baseYear}年（例：${wyStr}--1-27 → ${baseYear}/01/27）
-  - 「${wyStr1}--」で始まる日付 → ${baseYear + 1}年（例：${wyStr1}--1-5 → ${baseYear + 1}/01/05）
-- ページ上部に年度が記載されている場合はそれを使用する
-- 令和N年の一般変換：令和N年 = 2018+N年（例：R7=2025、R8=2026）。日付列の先頭2桁が令和年号のNN-MM-DD形式も同様（例：01-10-02→2019/10/02、05-12-11→2023/12/11、07-05-09→2025/05/09）
-- RまたはRで始まる略記（例：R7.11.12→2025/11/12、R8.3.5→2026/03/05）
-- 西暦下2桁表記（例：25.9.30→2025/09/30、26.1.1→2026/01/01）
-- 日付が空欄の行（前行の取引の続き行）は前行と同じ日付を使用する
+【金額列の判定 — 絶対厳守】
+通帳には「お支払金額（出金）」列と「お預り金額（入金）」列の2列がある。
+- 出金(withdrawal): 「お支払金額」列の金額のみ
+- 入金(deposit): 「お預り金額」列の金額のみ
+- 判定基準は【列の物理的な位置のみ】。摘要の文言で絶対に判断しないこと
+- 「払戻」という文字が摘要にあっても、お預り金額列にあれば入金、お支払金額列にあれば出金
+- 「払戻」はお預り金額列（入金）に記載されることが多い。お支払金額列に「払戻」がある場合は列の読み間違いを疑って再確認すること
+- 金額が10万円を超える「払戻」は特に列位置を慎重に確認すること
+- 1行の中に「お支払金額」と「お預り金額」が同時に入ることはない。どちらか一方のみ
 
-### 残高のルール
-- 差引残高列が空欄の行は balance: null とする
-- 「RT206」「R7」「LT166」「K 206」等の記号・店番号欄の値を残高と誤読しないこと
-- 「5ネント゛シモキ」等の利払期表記は残高ではない。無視すること
-- アスタリスク(*)は区切り文字。例：「*1,000,000******1,010,000」→ balance: 1010000
-- 残高のマスキング部分(*****)は読み取り不要。前後の数値のみ抽出する
+【同一日付の複数行 — 抜け漏れ厳禁】
+- 同一日付に複数行ある場合、すべての行を漏れなく抽出すること
+- 残高が記載されていない行も必ず抽出すること（残高はnullで出力）
+- ページ内の行順を維持して抽出すること
 
-### スキップすべき行
-- 日付・入金・出金・残高がすべて空欄の物理的空白行
-- 「繰越」「前月繰越」「前ページ繰越」「通帳内のすべてのお取引を繰越しました」の行
-- 残高のみで入出金が空欄の繰越行
-- ページ下部の注意書き・説明文
+【残高(balance)の判定 — 最重要】
+- 差引残高列に印字された純粋な数値のみを残高とする
+- 残高は通常6桁以上（数万〜数百万円台）
+- 【絶対に残高と誤読してはいけない値】:
+  ・英字を含むコード: R166, RT206, LT166, K206, K272, Q272, Q341, K454, R454 など（アルファベット+数字の組み合わせはすべて店番・端末コード）
+  ・3〜4桁の小さな数字（コード番号の可能性が高い）
+  ・残高列以外の列に印字された数値
+- 残高が印字されていない行は必ず null にすること
 
-### 複数行にまたがる取引
-- 1取引が2行にまたがる場合（1行目：摘要+金額、2行目：振込先名等）は1つのitemとして結合する
-- 振込先名（「--------ヨウ」等のダッシュ区切り）は前行の摘要に結合する
-- 「シンワテ゛コウヘ オクリコシヲ オネカ゛イシマス」等の補足行は独立したitemにしない
+【2段組レイアウトへの対応】
+- 1つの取引が2行にわたる場合（例：1行目=日付・摘要・金額、2行目=残高・コード）は、2行を1つのitemとしてまとめる
+- 2行目に残高が印字されている場合、その残高を直前の取引の balance に含める
+- コード列（R166等）は description に含めず無視すること
 
-### 金額の読み取り精度
-- 類似数字の誤読に注意：7と1、8と0、6と0、3と8、5と6
-- カンマ区切りの数値（1,000,000等）は正確に読み取る
-- 前後の残高との整合性を確認してから出力する
-- 存在しない取引を追加しないこと。画像に印字されている行のみ抽出する
+【整合性チェック — 最重要】
+- 残高が記載されている行について、前の残高がある場合は以下の式で検証すること:
+  前残高 + 入金合計 - 出金合計 = 当行残高
+- 上記が合わない場合は、その日付の取引を再確認し、入出金列の読み誤りや抽出漏れがないか修正して再抽出すること
 
-### 利息・決算利息の行
-- 「決算利息」「利息」「利子」の行は金額が1円〜数百円と極小でも必ず抽出する
-- 東京東信用金庫等で見られる「*3*******2,010,003」形式：入出金額が*と*に挟まれた数字、残高が末尾の数値
-
-### 摘要フィールドのルール
-- 摘要はお取引内容列のテキストのみを抽出する
-- 通帳右端の店番号・記号欄（「RT272」「Q 537」「R 271」「LT166」「K 454」「RT206」等）は摘要ではない。descriptionに含めないこと
-- 摘要が空欄の行は description: "" とする`;}
+【除外ルール】
+- 入金・出金がともにない行（前月繰越・ページ繰越・残高のみ行・空白行）は含めない
+- 数値はカンマなし整数値
+- 全取引行を漏らさず抽出すること`;
 
 let bankbookData = [];
 let bankbookFileNames = [];
@@ -831,6 +851,7 @@ async function handleBankbookUpload(event) {
   bankbookFileNames = files.map(f => f.name);
   tabCost.bankbook = 0;
   resetAbort();
+  startTimer('bankbook');
 
   try {
     const allImgs = [];
@@ -843,72 +864,49 @@ async function handleBankbookUpload(event) {
     const total = allImgs.length;
     if (total === 0) throw new Error('画像を取得できませんでした');
 
-    const baseYear   = parseInt(document.getElementById('bankbook-base-year').value) || 2025;
-    const prompt     = getBankbookPrompt(baseYear);
     const pageErrors = [];
-    const zeroPages  = [];
-    const startTime  = Date.now();
-    let completed    = 0;
+    for (let i = 0; i < total; i++) {
+      const pct = Math.round(10 + ((i + 1) / total) * 85);
+      showProgress('bankbook', `${i + 1} / ${total} ページ処理中...`, pct);
 
-    const pageResults = await runWithConcurrency(allImgs.map((img, i) => async () => {
-      if (abortFlag) return null;
-      let result = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          result = await callGemini(prompt, img.data, img.mime, 2, 'bankbook');
-          if ((result.items || []).length > 0) break;
-          // 0件なら再試行
-          const msgEl = document.getElementById('bankbook-progress-msg');
-          if (msgEl && attempt < 2) msgEl.textContent = `ページ ${i + 1} 結果0件 再試行中 (${attempt + 2}/3)...`;
-        } catch (e) {
-          if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-          if (attempt === 2) pageErrors.push(`ページ ${i + 1} 要確認（3回失敗しスキップ）: ${e.message}`);
-          result = null;
+      if (abortFlag) break;
+      try {
+        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook');
+        for (const item of (result.items || [])) {
+          const hasWd  = item.withdrawal != null;
+          const hasDep = item.deposit    != null;
+          const hasBal = item.balance    != null;
+          // 入出金がない行（繰越行・空白行・残高のみ行）→ CSVに出力しない・残高も無視
+          if (!hasWd && !hasDep) continue;
+          bankbookData.push({
+            date:        item.date        ?? '',
+            withdrawal:  hasWd  ? item.withdrawal  : '',
+            deposit:     hasDep ? item.deposit     : '',
+            description: item.description ?? '',
+            balance:     hasBal ? item.balance     : ''
+          });
         }
+      } catch (e) {
+        if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
+        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
       }
-      if (!result || (result.items || []).length === 0) zeroPages.push(i + 1);
-      completed++;
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-      showProgress('bankbook', `${completed} / ${total} ページ処理中... 経過${elapsed}秒`, Math.round(10 + completed / total * 85));
-      return result ? { result, page: i + 1 } : null;
-    }), CONCURRENCY);
 
-    const CARRYOVER_RE = /前[月ページ頁]?繰越|繰越残高|^繰越$/;
-    for (const pageItem of pageResults) {
-      if (!pageItem) continue;
-      const { result, page } = pageItem;
-      for (const item of (result.items || [])) {
-        const hasWd  = item.withdrawal != null;
-        const hasDep = item.deposit    != null;
-        const hasBal = item.balance    != null;
-        if (!hasWd && !hasDep) continue;
-        // 繰越行をOCRが誤って入出金ありで返した場合も除外
-        const desc = item.description ?? '';
-        if (CARRYOVER_RE.test(desc)) continue;
-        bankbookData.push({
-          page,
-          date:        item.date        ?? '',
-          withdrawal:  hasWd  ? item.withdrawal  : '',
-          deposit:     hasDep ? item.deposit     : '',
-          description: desc,
-          balance:     hasBal ? item.balance     : ''
-        });
-      }
+      if (i < total - 1) await sleep(REQUEST_DELAY);
     }
+
+    // 日付昇順にソート（同日内はページ読み取り順を維持）
+    bankbookData.sort((a, b) => {
+      const da = a.date || '';
+      const db = b.date || '';
+      return da < db ? -1 : da > db ? 1 : 0;
+    });
 
     const errCount = runBalanceCheck();
 
     showProgress('bankbook', abortFlag ? '中止しました' : '完了', 100);
     await sleep(400);
     hideProgress('bankbook');
-
-    // 警告メッセージ収集
-    const warns = [...pageErrors];
-    if (zeroPages.length) warns.push(`抽出件数0件のページ: ${zeroPages.join(', ')}`);
-    const gapWarns = checkDateGaps(bankbookData);
-    warns.push(...gapWarns);
-    if (warns.length) showError('bankbook', warns.join('\n'));
-
+    if (pageErrors.length) showError('bankbook', pageErrors.join('\n'));
     renderBankbookTable(errCount);
     updateCostBadge('bankbook');
 
@@ -918,138 +916,161 @@ async function handleBankbookUpload(event) {
   }
 }
 
-function checkDateGaps(data) {
-  const warns = [];
-  const dates = data
-    .map(r => r.date ? new Date(r.date) : null)
-    .filter(d => d && !isNaN(d.getTime()))
-    .sort((a, b) => a - b);
-  for (let i = 1; i < dates.length; i++) {
-    const gapDays = (dates[i] - dates[i - 1]) / 86400000;
-    if (gapDays > 30) {
-      const fmt = d => `${d.getFullYear()}年${d.getMonth() + 1}月`;
-      warns.push(`${fmt(dates[i - 1])}〜${fmt(dates[i])}のデータが欠落している可能性があります（約${Math.round(gapDays)}日の空白）`);
-    }
-  }
-  return warns;
-}
-
 function runBalanceCheck() {
-  bankbookData.forEach(r => { r.check = ''; r.autoFixed = false; });
+  // 前回の自動補正をリセットして元の値に戻す
+  bankbookData.forEach(r => {
+    if (r.autofix) {
+      r.deposit    = r.autofix.origDeposit;
+      r.withdrawal = r.autofix.origWithdrawal;
+    }
+    r.check  = '';
+    r.autofix = null;
+  });
 
-  let running              = null;
-  let intervalStart        = 0;
-  let intervalStartBalance = null;
-  let errCount             = 0;
+  let running       = null; // 直前の確定残高
+  let baseBalance   = null; // 現区間の起点残高（自動補正の基準）
+  let intervalStart = 0;    // 現区間の開始インデックス
+  let errCount      = 0;
 
   for (let i = 0; i < bankbookData.length; i++) {
     const row = bankbookData[i];
     const dep = Math.round(parseFloat(row.deposit)    || 0);
     const wd  = Math.round(parseFloat(row.withdrawal) || 0);
 
-    if (running !== null) running = running + dep - wd;
+    const balVal     = parseFloat(row.balance);
+    const hasBalance = row.balance !== '' && row.balance != null &&
+                       !isNaN(balVal) && balVal !== 0;
 
-    if (row.balance === '' || row.balance == null) continue;
-
-    const actual = Math.round(parseFloat(row.balance));
-
-    if (running === null) {
-      running              = actual;
-      intervalStartBalance = actual;
-      intervalStart        = i + 1;
+    if (!hasBalance) {
+      if (running !== null) {
+        running = running + dep - wd;
+        if (running < 0) {          // マイナス残高は異常 → 次の残高行から再確立
+          running = null; baseBalance = null; intervalStart = i + 1;
+        }
+      }
       continue;
     }
 
-    if (running === actual) {
-      for (let j = intervalStart; j <= i; j++) bankbookData[j].check = 'OK';
-    } else {
-      // 1行スワップで修正できるか試みる
-      const diff = actual - running;
-      let fixedIdx = -1;
+    const actual = Math.round(balVal);
 
-      for (let j = intervalStart; j <= i; j++) {
-        const r = bankbookData[j];
-        const w = Math.round(parseFloat(r.withdrawal) || 0);
-        const d = Math.round(parseFloat(r.deposit)    || 0);
+    if (running === null) {
+      // 基準値未確立 → 起点として設定
+      running = actual; baseBalance = actual;
+      bankbookData[i].check = 'OK';
+      intervalStart = i + 1;
+      continue;
+    }
 
-        if (w > 0 && d === 0 && 2 * w === diff) {
-          r.deposit = w; r.withdrawal = ''; r.autoFixed = true;
-          fixedIdx = j; break;
-        }
-        if (d > 0 && w === 0 && -2 * d === diff) {
-          r.withdrawal = d; r.deposit = ''; r.autoFixed = true;
-          fixedIdx = j; break;
-        }
-      }
+    const expected = running + dep - wd;
 
-      if (fixedIdx >= 0) {
-        // 修正後に再計算して確認
-        let recalc = intervalStartBalance;
-        for (let j = intervalStart; j <= i; j++) {
-          recalc += Math.round(parseFloat(bankbookData[j].deposit)    || 0)
-                  - Math.round(parseFloat(bankbookData[j].withdrawal) || 0);
+    if (expected < 0) {
+      // 計算値がマイナス → 累積誤差とみなしリセット
+      running = actual; baseBalance = actual;
+      bankbookData[i].check = 'OK';
+      intervalStart = i + 1;
+      continue;
+    }
+
+    if (expected === actual) {
+      bankbookData[i].check = 'OK';
+      running = actual; baseBalance = actual;
+      intervalStart = i + 1;
+      continue;
+    }
+
+    // ── 不一致 → 入金/出金の反転パターンを全探索 ──────────────
+    const idxs  = [];
+    for (let j = intervalStart; j <= i; j++) idxs.push(j);
+    const n     = idxs.length;
+    const MAX_N = 16; // 最大 2^16 = 65,536 パターン
+    let fixMask = -1;
+
+    if (n <= MAX_N) {
+      for (let mask = 1; mask < (1 << n) && fixMask === -1; mask++) {
+        let t = baseBalance;
+        for (let k = 0; k < n; k++) {
+          const r2 = bankbookData[idxs[k]];
+          const d2 = Math.round(parseFloat(r2.deposit)    || 0);
+          const w2 = Math.round(parseFloat(r2.withdrawal) || 0);
+          t += ((mask >> k) & 1) ? (w2 - d2) : (d2 - w2);
         }
-        for (let j = intervalStart; j <= i; j++) bankbookData[j].check = 'OK';
-      } else {
-        const label = `残高不一致（計算値：${running.toLocaleString()}円、通帳値：${actual.toLocaleString()}円）`;
-        for (let j = intervalStart; j <= i; j++) bankbookData[j].check = label;
-        bankbookData[i].calculatedBalance = running;
-        errCount++;
+        if (t === actual) fixMask = mask;
       }
     }
 
-    running              = actual;
-    intervalStartBalance = actual;
-    intervalStart        = i + 1;
+    if (fixMask !== -1) {
+      // 補正パターン確定 → 該当行の入金/出金を入れ替えて「自動補正」マーク
+      for (let k = 0; k < n; k++) {
+        const r2 = bankbookData[idxs[k]];
+        if ((fixMask >> k) & 1) {
+          r2.autofix    = { origDeposit: r2.deposit, origWithdrawal: r2.withdrawal };
+          r2.deposit    = r2.autofix.origWithdrawal;
+          r2.withdrawal = r2.autofix.origDeposit;
+          r2.check      = '自動補正';
+        } else {
+          r2.check = r2.check || 'OK';
+        }
+      }
+    } else {
+      // どのパターンでも合わない → 「要確認」
+      const diff = actual - expected;
+      bankbookData[i].check =
+        `要確認（差額：${diff >= 0 ? '+' : ''}${diff.toLocaleString()}円）`;
+      errCount++;
+    }
+
+    running = actual; baseBalance = actual;
+    intervalStart = i + 1;
   }
 
   return errCount;
 }
 
 function renderBankbookTable(errCount = 0) {
-  renderFilename('bankbook', bankbookFileNames);
-  const noteEl = document.getElementById('bankbook-note');
-  if (noteEl) {
-    noteEl.innerHTML = errCount > 0
-      ? `<div style="font-size:0.82rem;color:#4a5568;padding:4px 2px;line-height:1.8">
-          残高不一致のボタン説明：
-          <span style="background:#38a169;color:#fff;border-radius:3px;padding:1px 6px;margin:0 4px">✓ 計算値が正しい</span>計算値で残高を上書きしOKにする　／
-          <span style="background:#718096;color:#fff;border-radius:3px;padding:1px 6px;margin:0 4px">✕ 解除</span>エラー表示を非表示にする（計算値には戻らない）　／
-          <span style="background:#e2e8f0;color:#4a5568;border-radius:3px;padding:1px 6px;margin:0 4px">↩ 元に戻す</span>解除を取り消す
-        </div>`
-      : '';
-  }
+  // ファイル名表示
   const infoEl = document.getElementById('bankbook-balance-info');
-  const balanceLabel = bankbookData.some(r => r.balance !== '')
-    ? (errCount === 0
-        ? `<span style="color:#059669;font-weight:700">✓ 残高一致</span>`
-        : `<span style="color:#e53e3e;font-weight:700">⚠ 残高不一致 ${errCount}件</span>`)
+  const fileLabel = bankbookFileNames.length
+    ? `<span style="color:#4a5568">📄 ${bankbookFileNames.map(esc).join('、')}</span>`
     : '';
-  infoEl.innerHTML = balanceLabel
-    ? `<div style="display:flex;gap:16px;align-items:center;padding:10px 0;font-size:0.9rem">${balanceLabel}</div>`
+  const autofixCount = bankbookData.filter(r => r.check === '自動補正').length;
+  const hasBal       = bankbookData.some(r => r.balance !== '');
+  let statusParts = [];
+  if (hasBal) {
+    if (errCount === 0 && autofixCount === 0)
+      statusParts.push(`<span style="color:#059669;font-weight:700">✓ 残高一致</span>`);
+    else {
+      if (errCount > 0)
+        statusParts.push(`<span style="color:#e53e3e;font-weight:700">⚠ 要確認 ${errCount}件</span>`);
+      if (autofixCount > 0)
+        statusParts.push(`<span style="color:#d97706;font-weight:700">✏ 自動補正 ${autofixCount}件</span>`);
+    }
+  }
+  const balanceLabel = statusParts.join(' &nbsp; ');
+  infoEl.innerHTML = (fileLabel || balanceLabel)
+    ? `<div style="display:flex;gap:16px;align-items:center;padding:10px 0;font-size:0.9rem">${fileLabel}${balanceLabel}</div>`
     : '';
 
   const tbody = document.getElementById('bankbook-tbody');
   tbody.innerHTML = bankbookData.map((r, i) => {
-    const isNG    = r.check && r.check.startsWith('残高不一致');
-    const isFixed = r.autoFixed;
-    const isDismissed = !r.check && r.prevCheck;
-    const isAccepted  = r.acceptedCalc && r.prevBalance != null;
-    const btnCalc       = `<button onclick="acceptCalculated(${i})" style="margin-left:6px;padding:2px 8px;font-size:0.75rem;background:#38a169;color:#fff;border:none;border-radius:3px;cursor:pointer">✓ 計算値が正しい</button>`;
-    const btnDismiss    = `<button onclick="dismissError(${i})" style="margin-left:4px;padding:2px 8px;font-size:0.75rem;background:#718096;color:#fff;border:none;border-radius:3px;cursor:pointer">✕ 解除</button>`;
-    const btnUndo       = `<button onclick="undoDismiss(${i})" style="padding:2px 8px;font-size:0.75rem;background:#e2e8f0;color:#4a5568;border:none;border-radius:3px;cursor:pointer">↩ 元に戻す</button>`;
-    const btnUndoCalc   = `<button onclick="undoAcceptCalculated(${i})" style="margin-left:6px;padding:2px 8px;font-size:0.75rem;background:#e2e8f0;color:#4a5568;border:none;border-radius:3px;cursor:pointer">↩ 元に戻す</button>`;
+    const isConfirm = r.check && r.check.startsWith('要確認');
+    const isAutofix = r.check === '自動補正';
+    const rowClass  = isConfirm ? 'row-confirm' : isAutofix ? 'row-autofix' : '';
+
     const checkCell = r.check === 'OK'
-      ? (isFixed    ? '<span class="check-fixed">↔ 自動修正</span>'
-       : isAccepted ? `<span class="check-ok">OK</span>${btnUndoCalc}`
-       :              '<span class="check-ok">OK</span>')
-      : isNG ? `<span class="check-ng">${esc(r.check)}</span>${r.calculatedBalance != null ? btnCalc : ''}${btnDismiss}`
-      : isDismissed ? btnUndo : '';
-    return `<tr class="${isNG ? 'row-error' : isFixed ? 'row-autofixed' : ''}">
-      <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
+      ? '<span class="check-ok">OK</span>'
+      : isAutofix
+        ? `<span class="check-fix" title="補正前 → 入金:${esc(String(r.autofix?.origDeposit||'－'))} ／ 出金:${esc(String(r.autofix?.origWithdrawal||'－'))}">✏ 自動補正</span>`
+        : isConfirm
+          ? `<span class="check-confirm">${esc(r.check)}</span>`
+          : '';
+
+    const wdAttr  = r.autofix ? ` title="補正前の出金: ${esc(String(r.autofix.origWithdrawal||'－'))}"` : '';
+    const depAttr = r.autofix ? ` title="補正前の入金: ${esc(String(r.autofix.origDeposit||'－'))}"` : '';
+
+    return `<tr class="${rowClass}">
       <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="withdrawal">${esc(String(r.withdrawal))}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="deposit">${esc(String(r.deposit))}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="withdrawal"${wdAttr}>${esc(String(r.withdrawal))}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="deposit"${depAttr}>${esc(String(r.deposit))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="balance">${esc(String(r.balance))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
       <td>${checkCell}</td>
@@ -1063,18 +1084,11 @@ function renderBankbookTable(errCount = 0) {
 
 function downloadCSVBankbook() {
   const BOM = '﻿';
-  let csv = BOM + 'ページ,日付,出金,入金,残高,摘要\n';
-  let running = null;
+  let csv = BOM + '日付,出金,入金,残高,摘要\n';
   bankbookData.forEach(r => {
-    const dep = Math.round(parseFloat(r.deposit)    || 0);
-    const wd  = Math.round(parseFloat(r.withdrawal) || 0);
-    if (running !== null) running = running + dep - wd;
-    const printed = (r.balance !== '' && r.balance != null) ? Math.round(parseFloat(r.balance)) : null;
-    if (printed !== null) running = printed;
-    const balOut = printed !== null ? printed : (running !== null ? running : '');
-    csv += [r.page ?? '', r.date, r.withdrawal, r.deposit, balOut, r.description].map(csvField).join(',') + '\n';
+    csv += [r.date, r.withdrawal, r.deposit, r.balance, r.description].map(csvField).join(',') + '\n';
   });
-  downloadFile(csv, toCsvFilename(bankbookFileNames, '通帳.csv'));
+  downloadFile(csv, '通帳.csv');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1111,9 +1125,8 @@ const CARD_PROMPT = `あなたは会計書類OCRの専門家です。このカ�
 【摘要の簡略化ルール】
 - ETCの場合：カード番号（ETC NO）・入口・出口・道路の重複情報を除き「ETC {道路会社名}」のみにすること（例：「ETC 首都高速道路」「ETC 東日本高速道路 関東支社」）`;
 
-let cardData      = [];
-let cardTotals    = [];
-let cardFileNames = [];
+let cardData   = [];
+let cardTotals = [];
 
 async function handleCardUpload(event) {
   const files = Array.from(event.target.files);
@@ -1121,11 +1134,11 @@ async function handleCardUpload(event) {
   if (!files.length) return;
 
   clearError('card');
-  cardData      = [];
-  cardTotals    = [];
-  cardFileNames = files.map(f => f.name);
-  tabCost.card  = 0;
+  cardData   = [];
+  cardTotals = [];
+  tabCost.card = 0;
   resetAbort();
+  startTimer('card');
 
   try {
     const allImgs = [];
@@ -1139,41 +1152,32 @@ async function handleCardUpload(event) {
     if (total === 0) throw new Error('画像を取得できませんでした');
 
     const pageErrors = [];
-    const startTime = Date.now();
-    let completed = 0;
+    for (let i = 0; i < total; i++) {
+      const pct = Math.round(10 + ((i + 1) / total) * 85);
+      showProgress('card', `${i + 1} / ${total} ページ処理中...`, pct);
 
-    const pageResults = await runWithConcurrency(allImgs.map((img, i) => async () => {
-      if (abortFlag) return null;
+      if (abortFlag) break;
       try {
-        const result = await callGemini(CARD_PROMPT, img.data, img.mime, 2, 'card');
-        return { result, page: i + 1 };
+        const result = await callGemini(CARD_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'card');
+        for (const item of (result.items || [])) {
+          if (!item.date && item.amount == null) continue;
+          // 合計・サマリ行を除外
+          const d = item.description ?? '';
+          if (/今月ご利用額|ご請求金額|ご請求合計|合計額|その他ご請求分|繰越残高|お支払金額/.test(d)) continue;
+          if (/^.{1,10}様/.test(d)) continue; // 「〇〇様」で始まる行
+          cardData.push({
+            date:        item.date        ?? '',
+            amount:      item.amount      != null ? item.amount : '',
+            description: item.description ?? ''
+          });
+        }
+        if (result.total != null) cardTotals.push(result.total);
       } catch (e) {
         if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-        pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
-        return null;
-      } finally {
-        completed++;
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
-        showProgress('card', `${completed} / ${total} ページ処理中... 経過${elapsed}秒`, Math.round(10 + completed / total * 85));
+        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
       }
-    }), CONCURRENCY);
 
-    for (const pageItem of pageResults) {
-      if (!pageItem) continue;
-      const { result, page } = pageItem;
-      for (const item of (result.items || [])) {
-        if (!item.date && item.amount == null) continue;
-        const d = item.description ?? '';
-        if (/今月ご利用額|ご請求金額|ご請求合計|合計額|その他ご請求分|繰越残高|お支払金額/.test(d)) continue;
-        if (/^.{1,10}様/.test(d)) continue;
-        cardData.push({
-          page,
-          date:        item.date        ?? '',
-          amount:      item.amount      != null ? item.amount : '',
-          description: item.description ?? ''
-        });
-      }
-      if (result.total != null) cardTotals.push(result.total);
+      if (i < total - 1) await sleep(REQUEST_DELAY);
     }
 
     showProgress('card', abortFlag ? '中止しました' : '完了', 100);
@@ -1181,7 +1185,6 @@ async function handleCardUpload(event) {
     hideProgress('card');
     if (pageErrors.length) showError('card', pageErrors.join('\n'));
     renderCardTable();
-    renderFilename('card', cardFileNames);
     updateCostBadge('card');
 
   } catch (e) {
@@ -1194,7 +1197,6 @@ function renderCardTable() {
   const tbody = document.getElementById('card-tbody');
   tbody.innerHTML = cardData.map((r, i) => `
     <tr>
-      <td style="color:#a0aec0;font-size:0.8rem;white-space:nowrap">P.${r.page ?? ''}</td>
       <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
@@ -1223,11 +1225,11 @@ function renderCardTable() {
 
 function downloadCSVCard() {
   const BOM = '﻿';
-  let csv = BOM + 'ページ,日付,出金,摘要\n';
+  let csv = BOM + '日付,出金,摘要\n';
   cardData.forEach(r => {
-    csv += [r.page ?? '', r.date, r.amount, r.description].map(csvField).join(',') + '\n';
+    csv += [r.date, r.amount, r.description].map(csvField).join(',') + '\n';
   });
-  downloadFile(csv, toCsvFilename(cardFileNames, 'カード明細.csv'));
+  downloadFile(csv, 'カード明細.csv');
 }
 
 // ─── Unified CSV dispatch ─────────────────────────────────
@@ -1237,64 +1239,28 @@ function downloadCSV(tab) {
   if (tab === 'card')     return downloadCSVCard();
 }
 
-function acceptCalculated(i) {
-  bankbookData[i].prevBalance = bankbookData[i].balance;
-  bankbookData[i].acceptedCalc = true;
-  bankbookData[i].balance = bankbookData[i].calculatedBalance;
-  bankbookData[i].calculatedBalance = null;
-  const errCount = runBalanceCheck();
-  renderBankbookTable(errCount);
-}
-
-function undoAcceptCalculated(i) {
-  bankbookData[i].balance = bankbookData[i].prevBalance;
-  bankbookData[i].prevBalance = null;
-  bankbookData[i].acceptedCalc = false;
-  const errCount = runBalanceCheck();
-  renderBankbookTable(errCount);
-}
-
-function dismissError(i) {
-  bankbookData[i].prevCheck = bankbookData[i].check;
-  bankbookData[i].check = '';
-  const errCount = bankbookData.filter(r => r.check && r.check.startsWith('残高不一致')).length;
-  renderBankbookTable(errCount);
-}
-
-function undoDismiss(i) {
-  bankbookData[i].check = bankbookData[i].prevCheck || '';
-  bankbookData[i].prevCheck = null;
-  const errCount = bankbookData.filter(r => r.check && r.check.startsWith('残高不一致')).length;
-  renderBankbookTable(errCount);
-}
-
 function recheckBalance() {
   if (!bankbookData.length) return;
   const errCount = runBalanceCheck();
   renderBankbookTable(errCount);
-  const done = document.getElementById('recheck-done');
-  if (done) { done.style.display = 'inline'; setTimeout(() => { done.style.display = 'none'; }, 3000); }
 }
 
 // ─── Clear results ────────────────────────────────────────
 function clearResults(tab) {
   clearError(tab);
   if (tab === 'receipt') {
-    receiptData = []; receiptFileNames = [];
+    receiptData = [];
     document.getElementById('receipt-results').style.display = 'none';
-    document.getElementById('receipt-filename').innerHTML = '';
   } else if (tab === 'bankbook') {
-    bankbookData = []; bankbookFileNames = [];
+    bankbookData = [];
     document.getElementById('bankbook-results').style.display = 'none';
     document.getElementById('bankbook-balance-info').innerHTML = '';
-    document.getElementById('bankbook-filename').innerHTML = '';
     const rb = document.getElementById('btn-recheck');
     if (rb) rb.remove();
   } else if (tab === 'card') {
-    cardData = []; cardTotals = []; cardFileNames = [];
+    cardData = []; cardTotals = [];
     document.getElementById('card-results').style.display = 'none';
     document.getElementById('card-summary').innerHTML = '';
-    document.getElementById('card-filename').innerHTML = '';
   }
 }
 </script>
