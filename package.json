@@ -1,0 +1,49 @@
+{
+  "name": "accounting-ocr",
+  "version": "1.0.0",
+  "description": "会計OCRアプリ",
+  "author": "OCR App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.accounting.ocr",
+    "productName": "会計OCRアプリ",
+    "copyright": "Copyright © 2024",
+    "files": [
+      "index.html",
+      "main.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "sign": null,
+      "signingHashAlgorithms": null,
+      "forceCodeSigning": false,
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "会計OCRアプリ.exe"
+    },
+    "electronVersion": "33.3.1",
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
+    "npmRebuild": false,
+    "asar": true,
+    "compression": "maximum"
+  },
+  "devDependencies": {
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8"
+  }
+}
