@@ -98,10 +98,6 @@
     #receipt-warn-tbody tr:hover { background: #fed7d7 !important; }
     #receipt-warn-tbody td { color: #9b2c2c; }
     .receipt-flag { display: inline-block; font-size: 0.73rem; font-weight: 700; color: #c53030; background: #fed7d7; border-radius: 3px; padding: 1px 5px; white-space: nowrap; vertical-align: middle; cursor: default; border: 1px solid #fc8181; }
-    .btn-row-del { padding: 2px 7px; font-size: 0.8rem; background: #fed7d7; color: #c53030; border: 1px solid #fc8181; border-radius: 4px; cursor: pointer; line-height: 1.4; }
-    .btn-row-del:hover { background: #fc8181; color: #fff; }
-    .btn-row-ins { padding: 2px 7px; font-size: 0.8rem; background: #e6fffa; color: #2c7a7b; border: 1px solid #81e6d9; border-radius: 4px; cursor: pointer; line-height: 1.4; margin-right: 3px; }
-    .btn-row-ins:hover { background: #81e6d9; color: #234e52; }
   </style>
 </head>
 <body>
@@ -211,7 +207,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th><th>操作</th></tr></thead>
+          <thead><tr><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
           <tbody id="bankbook-tbody"></tbody>
         </table>
       </div>
@@ -879,7 +875,7 @@ async function handleBankbookUpload(event) {
 
       if (abortFlag) break;
       try {
-        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook');
+        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook', 1024);
         for (const item of (result.items || [])) {
           const hasWd  = item.withdrawal != null;
           const hasDep = item.deposit    != null;
@@ -1106,10 +1102,6 @@ function renderBankbookTable(errCount = 0, dateGaps = []) {
       <td contenteditable="true" data-idx="${i}" data-field="balance">${esc(String(r.balance))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
       <td>${checkCell}</td>
-      <td style="white-space:nowrap">
-        <button class="btn-row-ins" onclick="insertBankbookRow(${i})" title="下に空行を挿入">＋</button>
-        <button class="btn-row-del" onclick="deleteBankbookRow(${i})" title="この行を削除">✕</button>
-      </td>
     </tr>`;
   }).join('');
 
@@ -1273,22 +1265,6 @@ function downloadCSV(tab) {
   if (tab === 'receipt')  return downloadCSVReceipt();
   if (tab === 'bankbook') return downloadCSVBankbook();
   if (tab === 'card')     return downloadCSVCard();
-}
-
-function deleteBankbookRow(i) {
-  bankbookData.splice(i, 1);
-  const errCount = runBalanceCheck();
-  const dateGaps = detectDateGaps(bankbookData, 30);
-  renderBankbookTable(errCount, dateGaps);
-}
-
-function insertBankbookRow(i) {
-  bankbookData.splice(i + 1, 0, {
-    date: '', withdrawal: '', deposit: '', description: '', balance: '', check: '', autofix: null
-  });
-  const errCount = runBalanceCheck();
-  const dateGaps = detectDateGaps(bankbookData, 30);
-  renderBankbookTable(errCount, dateGaps);
 }
 
 function recheckBalance() {
