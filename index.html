@@ -494,6 +494,10 @@ function clearError(tab) {
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+// カタカナの濁点・半濁点を結合（ホ゛→ボ、ハ゜→パ 等）
+function normalizeText(s) {
+  return s ? String(s).normalize('NFC') : '';
+}
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function num(v) { return v != null && v !== '' ? v : ''; }
 
@@ -568,8 +572,8 @@ function receiptToRows(result) {
   if (result.date == null && result.amount_total == null &&
       result.amount_10 == null && result.amount_8 == null) return null;
 
-  const store        = result.store_name ?? '';
-  const purpose      = result.purpose ? result.purpose.trim() : null;
+  const store        = normalizeText(result.store_name);
+  const purpose      = result.purpose ? normalizeText(result.purpose.trim()) : null;
   const renban       = result.renban != null ? String(result.renban) : null;
   const invoiceClass = result.invoice_number ? '' : '区分記載';
   // 0 は「記載なし」扱い
@@ -882,7 +886,7 @@ async function handleBankbookUpload(event) {
             date:        item.date        ?? '',
             withdrawal:  hasWd  ? item.withdrawal  : '',
             deposit:     hasDep ? item.deposit     : '',
-            description: item.description ?? '',
+            description: normalizeText(item.description),
             balance:     hasBal ? item.balance     : ''
           });
         }
@@ -1192,7 +1196,7 @@ async function handleCardUpload(event) {
           cardData.push({
             date:        item.date        ?? '',
             amount:      item.amount      != null ? item.amount : '',
-            description: item.description ?? ''
+            description: normalizeText(item.description)
           });
         }
         if (result.total != null) cardTotals.push(result.total);
