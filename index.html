@@ -864,41 +864,54 @@ async function handleBankbookUpload(event) {
     const total = allImgs.length;
     if (total === 0) throw new Error('画像を取得できませんでした');
 
-    const pageErrors = [];
-    for (let i = 0; i < total; i++) {
-      const pct = Math.round(10 + ((i + 1) / total) * 85);
-      showProgress('bankbook', `${i + 1} / ${total} ページ処理中...`, pct);
+    const BATCH_SIZE  = 3;
+    const pageErrors  = [];
+    let   completed   = 0;
 
-      if (abortFlag) break;
+    const processPage = async (img, pageIdx) => {
+      if (abortFlag) return;
       try {
-        const result = await callGemini(BANKBOOK_PROMPT, allImgs[i].data, allImgs[i].mime, 3, 'bankbook', 1024);
+        const result = await callGemini(BANKBOOK_PROMPT, img.data, img.mime, 3, 'bankbook', 1024);
         for (const item of (result.items || [])) {
           const hasWd  = item.withdrawal != null;
           const hasDep = item.deposit    != null;
           const hasBal = item.balance    != null;
-          // 入出金がない行（繰越行・空白行・残高のみ行）→ CSVに出力しない・残高も無視
           if (!hasWd && !hasDep) continue;
           bankbookData.push({
             date:        item.date        ?? '',
             withdrawal:  hasWd  ? item.withdrawal  : '',
             deposit:     hasDep ? item.deposit     : '',
             description: item.description ?? '',
-            balance:     hasBal ? item.balance     : ''
+            balance:     hasBal ? item.balance     : '',
+            _page:       pageIdx   // ページ順保持用
           });
         }
       } catch (e) {
         if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-        pageErrors.push(`ページ ${i + 1}: ${e.message}`);
+        pageErrors.push(`ページ ${pageIdx + 1}: ${e.message}`);
       }
+    };
 
-      if (i < total - 1) await sleep(REQUEST_DELAY);
+    for (let i = 0; i < total; i += BATCH_SIZE) {
+      if (abortFlag) break;
+      const slice = allImgs.slice(i, Math.min(i + BATCH_SIZE, total));
+      await Promise.all(
+        slice.map((img, bi) =>
+          processPage(img, i + bi).finally(() => {
+            completed++;
+            const pct = Math.round(10 + (completed / total) * 85);
+            showProgress('bankbook', `${completed} / ${total} ページ完了`, pct);
+          })
+        )
+      );
     }
 
-    // 日付昇順にソート（同日内はページ読み取り順を維持）
+    // 日付昇順、同日内はページ順を維持
     bankbookData.sort((a, b) => {
       const da = a.date || '';
       const db = b.date || '';
-      return da < db ? -1 : da > db ? 1 : 0;
+      if (da !== db) return da < db ? -1 : 1;
+      return (a._page ?? 0) - (b._page ?? 0);
     });
 
     const errCount  = runBalanceCheck();
