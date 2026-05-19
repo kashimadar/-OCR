@@ -1059,7 +1059,7 @@ function renderBankbookTable(errCount = 0) {
       <td contenteditable="true" data-idx="${i}" data-field="deposit">${esc(String(r.deposit))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="balance">${esc(String(r.balance))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
-      <td>${checkCell}<span style="margin-left:6px;white-space:nowrap;display:inline-block"><button class="btn-del-row" onclick="deleteBankbookRow(${i})">削除</button><button class="btn-ins-row" onclick="insertBankbookRow(${i})">挿入</button></span></td>
+      <td style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>${checkCell}</span><span style="white-space:nowrap;flex-shrink:0"><button class="btn-del-row" onclick="deleteBankbookRow(${i})">削除</button><button class="btn-ins-row" onclick="insertBankbookRow(${i})">挿入</button></span></td>
     </tr>`;
   }).join('');
 
