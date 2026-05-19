@@ -204,7 +204,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>P.</th><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th><th>操作</th></tr></thead>
+          <thead><tr><th>P.</th><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
           <tbody id="bankbook-tbody"></tbody>
         </table>
       </div>
@@ -1059,8 +1059,7 @@ function renderBankbookTable(errCount = 0) {
       <td contenteditable="true" data-idx="${i}" data-field="deposit">${esc(String(r.deposit))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="balance">${esc(String(r.balance))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
-      <td>${checkCell}</td>
-      <td><button class="btn-del-row" onclick="deleteBankbookRow(${i})">削除</button><button class="btn-ins-row" onclick="insertBankbookRow(${i})">挿入</button></td>
+      <td>${checkCell}<span style="margin-left:6px;white-space:nowrap;display:inline-block"><button class="btn-del-row" onclick="deleteBankbookRow(${i})">削除</button><button class="btn-ins-row" onclick="insertBankbookRow(${i})">挿入</button></span></td>
     </tr>`;
   }).join('');
 
