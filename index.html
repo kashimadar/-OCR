@@ -76,6 +76,8 @@
     tr.row-autofixed { background: #f0fff4 !important; }
     .btn-del-row { padding: 2px 8px; background: #e53e3e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
     .btn-del-row:hover { background: #c53030; }
+    .btn-ins-row { padding: 2px 8px; background: #4a5568; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; margin-left: 3px; }
+    .btn-ins-row:hover { background: #2d3748; }
     .flag-review { font-size: 0.75rem; background: #e53e3e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
     .flag-dup { font-size: 0.75rem; background: #d69e2e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
 
@@ -202,7 +204,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>P.</th><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
+          <thead><tr><th>P.</th><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th><th>操作</th></tr></thead>
           <tbody id="bankbook-tbody"></tbody>
         </table>
       </div>
@@ -242,7 +244,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>P.</th><th>日付</th><th>出金 (円)</th><th>摘要 / 利用先</th></tr></thead>
+          <thead><tr><th>P.</th><th>日付</th><th>出金 (円)</th><th>摘要 / 利用先</th><th>操作</th></tr></thead>
           <tbody id="card-tbody"></tbody>
         </table>
       </div>
@@ -712,7 +714,7 @@ function renderReceiptTable() {
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="reduced_tax">${esc(r.reduced_tax)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="invoice_class">${esc(r.invoice_class)}</td>
-      <td><button class="btn-del-row" onclick="deleteReceiptRow(${i})">削除</button></td>
+      <td><button class="btn-del-row" onclick="deleteReceiptRow(${i})">削除</button><button class="btn-ins-row" onclick="insertReceiptRow(${i})">挿入</button></td>
     </tr>`;
   }).join('');
 
@@ -723,6 +725,11 @@ function renderReceiptTable() {
 
 function deleteReceiptRow(i) {
   receiptData.splice(i, 1);
+  renderReceiptTable();
+}
+
+function insertReceiptRow(i) {
+  receiptData.splice(i + 1, 0, { date: '', description: '', amount: '', reduced_tax: '', invoice_class: '', page: '-', needsReview: false, isDuplicate: false });
   renderReceiptTable();
 }
 
@@ -1053,12 +1060,25 @@ function renderBankbookTable(errCount = 0) {
       <td contenteditable="true" data-idx="${i}" data-field="balance">${esc(String(r.balance))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
       <td>${checkCell}</td>
+      <td><button class="btn-del-row" onclick="deleteBankbookRow(${i})">削除</button><button class="btn-ins-row" onclick="insertBankbookRow(${i})">挿入</button></td>
     </tr>`;
   }).join('');
 
   bindEditable(tbody, bankbookData);
   document.getElementById('bankbook-count').textContent = bankbookData.length;
   document.getElementById('bankbook-results').style.display = 'block';
+}
+
+function deleteBankbookRow(i) {
+  bankbookData.splice(i, 1);
+  const errCount = runBalanceCheck();
+  renderBankbookTable(errCount);
+}
+
+function insertBankbookRow(i) {
+  bankbookData.splice(i + 1, 0, { date: '', withdrawal: '', deposit: '', balance: '', description: '', page: '-', check: '' });
+  const errCount = runBalanceCheck();
+  renderBankbookTable(errCount);
 }
 
 function downloadCSVBankbook() {
@@ -1198,6 +1218,7 @@ function renderCardTable() {
       <td contenteditable="true" data-idx="${i}" data-field="date">${esc(r.date)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
+      <td><button class="btn-del-row" onclick="deleteCardRow(${i})">削除</button><button class="btn-ins-row" onclick="insertCardRow(${i})">挿入</button></td>
     </tr>`).join('');
 
   bindEditable(tbody, cardData);
@@ -1219,6 +1240,16 @@ function renderCardTable() {
 
   document.getElementById('card-count').textContent = cardData.length;
   document.getElementById('card-results').style.display = 'block';
+}
+
+function deleteCardRow(i) {
+  cardData.splice(i, 1);
+  renderCardTable();
+}
+
+function insertCardRow(i) {
+  cardData.splice(i + 1, 0, { date: '', amount: '', description: '', page: '-' });
+  renderCardTable();
 }
 
 function downloadCSVCard() {
