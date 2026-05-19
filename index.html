@@ -1074,7 +1074,7 @@ function renderBankbookTable(errCount = 0) {
     noteEl.innerHTML = errCount > 0
       ? `<div style="font-size:0.82rem;color:#4a5568;padding:4px 2px;line-height:1.8">
           残高不一致のボタン説明：
-          <span style="background:#38a169;color:#fff;border-radius:3px;padding:1px 6px;margin:0 4px">✓ 計算値が正しい</span>計算値で残高を上書きしOKにする　／
+          <span style="background:#38a169;color:#fff;border-radius:3px;padding:1px 6px;margin:0 4px">✓ 入金出金の金額正しい</span>計算値で残高を上書きしOKにする　／
           <span style="background:#718096;color:#fff;border-radius:3px;padding:1px 6px;margin:0 4px">✕ 解除</span>エラー表示を非表示にする（計算値には戻らない）　／
           <span style="background:#e2e8f0;color:#4a5568;border-radius:3px;padding:1px 6px;margin:0 4px">↩ 元に戻す</span>解除を取り消す
         </div>`
@@ -1096,7 +1096,7 @@ function renderBankbookTable(errCount = 0) {
     const isFixed = r.autoFixed;
     const isDismissed = !r.check && r.prevCheck;
     const isAccepted  = r.acceptedCalc && r.prevBalance != null;
-    const btnCalc       = `<button onclick="acceptCalculated(${i})" style="margin-left:6px;padding:2px 8px;font-size:0.75rem;background:#38a169;color:#fff;border:none;border-radius:3px;cursor:pointer">✓ 計算値が正しい</button>`;
+    const btnCalc       = `<button onclick="acceptCalculated(${i})" style="margin-left:6px;padding:2px 8px;font-size:0.75rem;background:#38a169;color:#fff;border:none;border-radius:3px;cursor:pointer">✓ 入金出金の金額正しい</button>`;
     const btnDismiss    = `<button onclick="dismissError(${i})" style="margin-left:4px;padding:2px 8px;font-size:0.75rem;background:#718096;color:#fff;border:none;border-radius:3px;cursor:pointer">✕ 解除</button>`;
     const btnUndo       = `<button onclick="undoDismiss(${i})" style="padding:2px 8px;font-size:0.75rem;background:#e2e8f0;color:#4a5568;border:none;border-radius:3px;cursor:pointer">↩ 元に戻す</button>`;
     const btnUndoCalc   = `<button onclick="undoAcceptCalculated(${i})" style="margin-left:6px;padding:2px 8px;font-size:0.75rem;background:#e2e8f0;color:#4a5568;border:none;border-radius:3px;cursor:pointer">↩ 元に戻す</button>`;
