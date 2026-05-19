@@ -158,7 +158,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>P.</th><th>日付</th><th>摘要</th><th>金額</th><th>軽減税率</th><th>請求書区分</th><th>操作</th></tr></thead>
+          <thead><tr><th>P.</th><th>日付</th><th>摘要</th><th>出金</th><th>入金</th><th>軽減税率</th><th>操作</th></tr></thead>
           <tbody id="receipt-tbody"></tbody>
         </table>
       </div>
@@ -717,8 +717,8 @@ function renderReceiptTable() {
       <td contenteditable="true" data-idx="${i}" data-field="date">${dateCell}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
+      <td contenteditable="true" data-idx="${i}" data-field="income">${esc(String(r.income ?? ''))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="reduced_tax">${esc(r.reduced_tax)}</td>
-      <td contenteditable="true" data-idx="${i}" data-field="invoice_class">${esc(r.invoice_class)}</td>
       <td><button class="btn-del-row" onclick="deleteReceiptRow(${i})">削除</button><button class="btn-ins-row" onclick="insertReceiptRow(${i})">挿入</button></td>
     </tr>`;
   }).join('');
@@ -769,7 +769,7 @@ function deleteReceiptRow(i) {
 }
 
 function insertReceiptRow(i) {
-  const newRow = { date: '', description: '', amount: '', reduced_tax: '', invoice_class: '', page: '-', needsReview: false, isDuplicate: false };
+  const newRow = { date: '', description: '', amount: '', income: '', reduced_tax: '', page: '-', needsReview: false, isDuplicate: false };
   receiptData.splice(i + 1, 0, newRow);
   pushUndo('receipt', { type: 'insert', index: i + 1 });
   renderReceiptTable();
@@ -777,10 +777,10 @@ function insertReceiptRow(i) {
 
 function downloadCSVReceipt() {
   const BOM = '﻿';
-  let csv = BOM + '日付,摘要,金額,軽減税率,請求書区分\n';
+  let csv = BOM + 'ページ,日付,摘要,出金,入金,軽減税率\n';
   receiptData.forEach(r => {
     const csvDate = r.needsReview ? '' : r.date;
-    csv += [csvDate, r.description, r.amount ?? '', r.reduced_tax, r.invoice_class].map(csvField).join(',') + '\n';
+    csv += [r.page ?? '', csvDate, r.description, r.amount ?? '', r.income ?? '', r.reduced_tax].map(csvField).join(',') + '\n';
   });
   downloadFile(csv, toCsvFilename(receiptFileNames, '領収書.csv'));
 }
