@@ -986,6 +986,8 @@ function checkDateGaps(data) {
   for (let i = 1; i < dates.length; i++) {
     const gapDays = (dates[i] - dates[i - 1]) / 86400000;
     if (gapDays > 30) {
+      // 末尾の1件だけが飛び離れている場合はOCR誤読の可能性が高いため警告しない
+      if (i === dates.length - 1) continue;
       const fmt = d => `${d.getFullYear()}年${d.getMonth() + 1}月`;
       warns.push(`${fmt(dates[i - 1])}〜${fmt(dates[i])}のデータが欠落している可能性があります（約${Math.round(gapDays)}日の空白）`);
     }
