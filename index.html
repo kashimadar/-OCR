@@ -74,10 +74,12 @@
     .check-ng { color: #e53e3e; font-weight: 700; }
     .check-fixed { color: #38a169; font-weight: 700; font-size: 0.82rem; }
     tr.row-autofixed { background: #f0fff4 !important; }
-    .btn-del-row { padding: 2px 8px; background: #e53e3e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
-    .btn-del-row:hover { background: #c53030; }
-    .btn-ins-row { padding: 2px 8px; background: #4a5568; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; margin-left: 3px; }
-    .btn-ins-row:hover { background: #2d3748; }
+    .btn-del-row { padding: 2px 8px; background: #fc8181; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; }
+    .btn-del-row:hover { background: #f56565; }
+    .btn-ins-row { padding: 2px 8px; background: #90cdf4; color: #2d3748; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; margin-left: 3px; }
+    .btn-ins-row:hover { background: #63b3ed; }
+    .btn-undo-row { padding: 5px 12px; background: #ed8936; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 0.85rem; display: none; }
+    .btn-undo-row:hover { background: #dd6b20; }
     .flag-review { font-size: 0.75rem; background: #e53e3e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
     .flag-dup { font-size: 0.75rem; background: #d69e2e; color: #fff; border-radius: 3px; padding: 1px 5px; margin-right: 4px; }
 
@@ -151,6 +153,7 @@
       </div>
       <div class="action-row">
         <button class="btn-clear" onclick="clearResults('receipt')">クリア</button>
+        <button id="receipt-undo" class="btn-undo-row" onclick="undoAction('receipt')">↩ 元に戻す</button>
         <span class="tip">セルをクリックして直接編集できます</span>
       </div>
       <div class="table-wrap">
@@ -198,13 +201,14 @@
       <div id="bankbook-balance-info"></div>
       <div class="action-row">
         <button class="btn-clear" onclick="clearResults('bankbook')">クリア</button>
+        <button id="bankbook-undo" class="btn-undo-row" onclick="undoAction('bankbook')">↩ 元に戻す</button>
         <button style="padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem" onclick="recheckBalance()">残高再チェック</button>
         <span id="recheck-done" style="display:none;color:#059669;font-size:0.85rem;font-weight:600">✓ チェックしました</span>
         <span class="tip">出金・入金・残高を編集後、「残高再チェック」で再計算できます。</span>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>P.</th><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th></tr></thead>
+          <thead><tr><th>P.</th><th>日付</th><th>出金</th><th>入金</th><th>残高</th><th>摘要</th><th>チェック</th><th>操作</th></tr></thead>
           <tbody id="bankbook-tbody"></tbody>
         </table>
       </div>
@@ -240,6 +244,7 @@
       <div id="card-summary"></div>
       <div class="action-row">
         <button class="btn-clear" onclick="clearResults('card')">クリア</button>
+        <button id="card-undo" class="btn-undo-row" onclick="undoAction('card')">↩ 元に戻す</button>
         <span class="tip">セルをクリックして直接編集できます</span>
       </div>
       <div class="table-wrap">
@@ -723,13 +728,50 @@ function renderReceiptTable() {
   document.getElementById('receipt-results').style.display = receiptData.length ? 'block' : 'none';
 }
 
+// ─── Undo stack ───────────────────────────────────────────
+const undoStack = { receipt: [], bankbook: [], card: [] };
+
+function pushUndo(tab, action) {
+  undoStack[tab].push(action);
+  const btn = document.getElementById(tab + '-undo');
+  if (btn) btn.style.display = 'inline';
+}
+
+function updateUndoBtn(tab) {
+  const btn = document.getElementById(tab + '-undo');
+  if (btn) btn.style.display = undoStack[tab].length ? 'inline' : 'none';
+}
+
+function undoAction(tab) {
+  const action = undoStack[tab].pop();
+  if (!action) return;
+  if (tab === 'receipt') {
+    if (action.type === 'delete') receiptData.splice(action.index, 0, action.row);
+    else receiptData.splice(action.index, 1);
+    renderReceiptTable();
+  } else if (tab === 'bankbook') {
+    if (action.type === 'delete') bankbookData.splice(action.index, 0, action.row);
+    else bankbookData.splice(action.index, 1);
+    const errCount = runBalanceCheck();
+    renderBankbookTable(errCount);
+  } else if (tab === 'card') {
+    if (action.type === 'delete') cardData.splice(action.index, 0, action.row);
+    else cardData.splice(action.index, 1);
+    renderCardTable();
+  }
+  updateUndoBtn(tab);
+}
+
 function deleteReceiptRow(i) {
+  pushUndo('receipt', { type: 'delete', index: i, row: Object.assign({}, receiptData[i]) });
   receiptData.splice(i, 1);
   renderReceiptTable();
 }
 
 function insertReceiptRow(i) {
-  receiptData.splice(i + 1, 0, { date: '', description: '', amount: '', reduced_tax: '', invoice_class: '', page: '-', needsReview: false, isDuplicate: false });
+  const newRow = { date: '', description: '', amount: '', reduced_tax: '', invoice_class: '', page: '-', needsReview: false, isDuplicate: false };
+  receiptData.splice(i + 1, 0, newRow);
+  pushUndo('receipt', { type: 'insert', index: i + 1 });
   renderReceiptTable();
 }
 
@@ -795,7 +837,7 @@ function getBankbookPrompt(baseYear) {
 ### 残高のルール
 - 差引残高列が空欄の行は balance: null とする
 - 「RT206」「R7」「LT166」「K 206」等の記号・店番号欄の値を残高と誤読しないこと
-- 「5ネント゛シモキ」等の利払期表記は残高ではない。無視すること
+- 「5ネンドシモキ」等の利払期表記は残高ではない。無視すること
 - アスタリスク(*)は区切り文字。例：「*1,000,000******1,010,000」→ balance: 1010000
 - 残高のマスキング部分(*****)は読み取り不要。前後の数値のみ抽出する
 
@@ -808,7 +850,7 @@ function getBankbookPrompt(baseYear) {
 ### 複数行にまたがる取引
 - 1取引が2行にまたがる場合（1行目：摘要+金額、2行目：振込先名等）は1つのitemとして結合する
 - 振込先名（「--------ヨウ」等のダッシュ区切り）は前行の摘要に結合する
-- 「シンワテ゛コウヘ オクリコシヲ オネカ゛イシマス」等の補足行は独立したitemにしない
+- 「シンワデコウヘ オクリコシヲ オネガイシマス」等の補足行は独立したitemにしない
 
 ### 金額の読み取り精度
 - 類似数字の誤読に注意：7と1、8と0、6と0、3と8、5と6
@@ -1059,7 +1101,8 @@ function renderBankbookTable(errCount = 0) {
       <td contenteditable="true" data-idx="${i}" data-field="deposit">${esc(String(r.deposit))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="balance">${esc(String(r.balance))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="description">${esc(r.description)}</td>
-      <td style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>${checkCell}</span><span style="white-space:nowrap;flex-shrink:0"><button class="btn-del-row" onclick="deleteBankbookRow(${i})">削除</button><button class="btn-ins-row" onclick="insertBankbookRow(${i})">挿入</button></span></td>
+      <td>${checkCell}</td>
+      <td style="white-space:nowrap"><button class="btn-del-row" onclick="deleteBankbookRow(${i})">削除</button><button class="btn-ins-row" onclick="insertBankbookRow(${i})">挿入</button></td>
     </tr>`;
   }).join('');
 
@@ -1069,13 +1112,16 @@ function renderBankbookTable(errCount = 0) {
 }
 
 function deleteBankbookRow(i) {
+  pushUndo('bankbook', { type: 'delete', index: i, row: Object.assign({}, bankbookData[i]) });
   bankbookData.splice(i, 1);
   const errCount = runBalanceCheck();
   renderBankbookTable(errCount);
 }
 
 function insertBankbookRow(i) {
-  bankbookData.splice(i + 1, 0, { date: '', withdrawal: '', deposit: '', balance: '', description: '', page: '-', check: '' });
+  const newRow = { date: '', withdrawal: '', deposit: '', balance: '', description: '', page: '-', check: '' };
+  bankbookData.splice(i + 1, 0, newRow);
+  pushUndo('bankbook', { type: 'insert', index: i + 1 });
   const errCount = runBalanceCheck();
   renderBankbookTable(errCount);
 }
@@ -1242,12 +1288,15 @@ function renderCardTable() {
 }
 
 function deleteCardRow(i) {
+  pushUndo('card', { type: 'delete', index: i, row: Object.assign({}, cardData[i]) });
   cardData.splice(i, 1);
   renderCardTable();
 }
 
 function insertCardRow(i) {
-  cardData.splice(i + 1, 0, { date: '', amount: '', description: '', page: '-' });
+  const newRow = { date: '', amount: '', description: '', page: '-' };
+  cardData.splice(i + 1, 0, newRow);
+  pushUndo('card', { type: 'insert', index: i + 1 });
   renderCardTable();
 }
 
@@ -1309,6 +1358,8 @@ function recheckBalance() {
 // ─── Clear results ────────────────────────────────────────
 function clearResults(tab) {
   clearError(tab);
+  undoStack[tab] = [];
+  updateUndoBtn(tab);
   if (tab === 'receipt') {
     receiptData = []; receiptFileNames = [];
     document.getElementById('receipt-results').style.display = 'none';
