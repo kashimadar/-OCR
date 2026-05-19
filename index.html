@@ -169,9 +169,9 @@
   <div id="tab-bankbook" class="tab-panel">
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
       <label style="font-size:0.88rem;color:#4a5568;font-weight:600;white-space:nowrap;">🗓 基準年（通帳の年度表記の基準）</label>
-      <input type="number" id="bankbook-base-year" value="2025" min="2000" max="2099"
+      <input type="number" id="bankbook-base-year" value="2025" min="1990" max="2099"
         style="width:90px;padding:5px 8px;border:1px solid #cbd5e0;border-radius:5px;font-size:0.9rem;">
-      <span class="tip">07→基準年、08→基準年+1 として変換。例：基準年2025 → 07-12-25 = 2025/12/25</span>
+      <span class="tip">通帳の日付「YY-MM-DD」のYY部分が基準年に対応。例：基準年2025 → 07-MM-DD = 2025年MM月DD日 / 08-MM-DD = 2026年MM月DD日。2008年の通帳なら基準年2008</span>
     </div>
     <label class="upload-area" id="bankbook-drop" for="bankbook-file">
       <span class="upload-icon">🏦</span>
@@ -789,9 +789,13 @@ function downloadCSVReceipt() {
 //  FEATURE ②  BANKBOOK
 // ═══════════════════════════════════════════════════════════
 function getBankbookPrompt(baseYear) {
-  const ry     = baseYear - 2018;
-  const ryStr  = String(ry).padStart(2, '0');
-  const ryStr1 = String(ry + 1).padStart(2, '0');
+  // Reiwa (2019+): ry = era year; pre-2019: use last 2 digits of Western year
+  const isReiwa = baseYear >= 2019;
+  const ry      = isReiwa ? baseYear - 2018 : null;
+  const ryStr   = isReiwa ? String(ry).padStart(2, '0')     : String(baseYear).slice(2);
+  const ryStr1  = isReiwa ? String(ry + 1).padStart(2, '0') : String(baseYear + 1).slice(2);
+  const ryLabel  = isReiwa ? `令和${ry}年` : `西暦${baseYear}年`;
+  const ryLabel1 = isReiwa ? `令和${ry + 1}年` : `西暦${baseYear + 1}年`;
   const wyStr  = String(baseYear).slice(2);
   const wyStr1 = String(baseYear + 1).slice(2);
   return `あなたは日本の銀行通帳のOCRエキスパートです。
@@ -822,10 +826,13 @@ function getBankbookPrompt(baseYear) {
 
 ### 日付のルール
 - 通帳の日付形式を YYYY/MM/DD に変換する
+- **【最重要】日付3部構成の読み方**：信用金庫・銀行通帳の日付列は「年(2桁) - 月(2桁) - 日(2桁)」の順。**先頭の数字は年であり、絶対に月として解釈してはならない**
 - 年度の変換ルール（最優先・この通帳専用の設定）：
-  - この通帳の「${ryStr}」は令和${ry}年 = ${baseYear}年を意味します
-  - 「${ryStr}-」で始まる日付 → ${baseYear}年（例：${ryStr}-12-25 → ${baseYear}/12/25）
-  - 「${ryStr1}-」で始まる日付 → ${baseYear + 1}年（例：${ryStr1}-1-5 → ${baseYear + 1}/01/05）
+  - 「${ryStr}」= ${ryLabel} = ${baseYear}年（これは年を表す。月ではない）
+  - 「${ryStr}-MM-DD」→ ${baseYear}/MM/DD　例：${ryStr}-01-13 → ${baseYear}/01/13、${ryStr}-12-25 → ${baseYear}/12/25
+  - 「${ryStr1}」= ${ryLabel1} = ${baseYear + 1}年（これは年を表す。月ではない）
+  - 「${ryStr1}-MM-DD」→ ${baseYear + 1}/MM/DD　例：${ryStr1}-01-13 → ${baseYear + 1}/01/13、${ryStr1}-02-09 → ${baseYear + 1}/02/09
+  - 【誤変換禁止】${ryStr1}-01-13 の正解は ${baseYear + 1}/01/13 ○ / ${baseYear + 1}/${ryStr1}/13 ✗（「${ryStr1}」を月と誤解しないこと）
   - 「${wyStr}--」で始まる日付 → ${baseYear}年（例：${wyStr}--1-27 → ${baseYear}/01/27）
   - 「${wyStr1}--」で始まる日付 → ${baseYear + 1}年（例：${wyStr1}--1-5 → ${baseYear + 1}/01/05）
 - ページ上部に年度が記載されている場合はそれを使用する
