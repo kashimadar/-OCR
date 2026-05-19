@@ -719,7 +719,7 @@ function renderReceiptTable() {
       <td contenteditable="true" data-idx="${i}" data-field="amount">${esc(String(r.amount ?? ''))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="income">${esc(String(r.income ?? ''))}</td>
       <td contenteditable="true" data-idx="${i}" data-field="reduced_tax">${esc(r.reduced_tax)}</td>
-      <td><button class="btn-del-row" onclick="deleteReceiptRow(${i})">削除</button><button class="btn-ins-row" onclick="insertReceiptRow(${i})">挿入</button></td>
+      <td style="white-space:nowrap"><button class="btn-del-row" onclick="deleteReceiptRow(${i})">削除</button><button class="btn-ins-row" onclick="insertReceiptRow(${i})">挿入</button></td>
     </tr>`;
   }).join('');
 
