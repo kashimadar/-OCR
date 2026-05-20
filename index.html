@@ -661,6 +661,7 @@ async function handleReceiptUpload(event) {
     if (total === 0) throw new Error('画像を取得できませんでした');
 
     const pageErrors = [];
+    const serverErrorPages = [];
     const startTime = Date.now();
     let completed = 0;
 
@@ -671,7 +672,11 @@ async function handleReceiptUpload(event) {
         return { result, page: i + 1 };
       } catch (e) {
         if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-        pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
+        if (/internal error|high demand|overloaded/i.test(e.message)) {
+          serverErrorPages.push(i + 1);
+        } else {
+          pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
+        }
         return null;
       } finally {
         completed++;
@@ -697,7 +702,17 @@ async function handleReceiptUpload(event) {
     showProgress('receipt', abortFlag ? '中止しました' : '完了', 100);
     await sleep(400);
     hideProgress('receipt');
-    if (pageErrors.length) showError('receipt', pageErrors.join('\n'));
+    {
+      const errEl = document.getElementById('receipt-error');
+      let errHtml = '';
+      if (serverErrorPages.length) {
+        errHtml += `<div class="alert alert-warn">⚠ サーバーエラーのため以下のページが追加できませんでした。再アップロードが必要です。<br><strong>対象ページ：${serverErrorPages.sort((a,b)=>a-b).join(', ')}</strong></div>`;
+      }
+      if (pageErrors.length) {
+        errHtml += `<div class="alert alert-error">⚠ ${esc(pageErrors.join('\n')).replace(/\n/g, '<br>')}</div>`;
+      }
+      errEl.innerHTML = errHtml;
+    }
     renderReceiptTable();
     renderFilename('receipt', receiptFileNames);
     updateCostBadge('receipt');
@@ -909,6 +924,7 @@ async function handleBankbookUpload(event) {
     const baseYear   = parseInt(document.getElementById('bankbook-base-year').value) || 2025;
     const prompt     = getBankbookPrompt(baseYear);
     const pageErrors = [];
+    const serverErrorPages = [];
     const zeroPages  = [];
     const startTime  = Date.now();
     let completed    = 0;
@@ -925,7 +941,13 @@ async function handleBankbookUpload(event) {
           if (msgEl && attempt < 2) msgEl.textContent = `ページ ${i + 1} 結果0件 再試行中 (${attempt + 2}/3)...`;
         } catch (e) {
           if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-          if (attempt === 2) pageErrors.push(`ページ ${i + 1} 要確認（3回失敗しスキップ）: ${e.message}`);
+          if (attempt === 2) {
+            if (/internal error|high demand|overloaded/i.test(e.message)) {
+              serverErrorPages.push(i + 1);
+            } else {
+              pageErrors.push(`ページ ${i + 1} 要確認（3回失敗しスキップ）: ${e.message}`);
+            }
+          }
           result = null;
         }
       }
@@ -970,7 +992,17 @@ async function handleBankbookUpload(event) {
     if (zeroPages.length) warns.push(`抽出件数0件のページ: ${zeroPages.join(', ')}`);
     const gapWarns = checkDateGaps(bankbookData);
     warns.push(...gapWarns);
-    if (warns.length) showError('bankbook', warns.join('\n'));
+    {
+      const errEl = document.getElementById('bankbook-error');
+      let errHtml = '';
+      if (serverErrorPages.length) {
+        errHtml += `<div class="alert alert-warn">⚠ サーバーエラーのため以下のページが追加できませんでした。再アップロードが必要です。<br><strong>対象ページ：${serverErrorPages.sort((a,b)=>a-b).join(', ')}</strong></div>`;
+      }
+      if (warns.length) {
+        errHtml += `<div class="alert alert-error">⚠ ${esc(warns.join('\n')).replace(/\n/g, '<br>')}</div>`;
+      }
+      errEl.innerHTML = errHtml;
+    }
 
     renderBankbookTable(errCount);
     updateCostBadge('bankbook');
@@ -1222,6 +1254,7 @@ async function handleCardUpload(event) {
     if (total === 0) throw new Error('画像を取得できませんでした');
 
     const pageErrors = [];
+    const serverErrorPages = [];
     const startTime = Date.now();
     let completed = 0;
 
@@ -1232,7 +1265,11 @@ async function handleCardUpload(event) {
         return { result, page: i + 1 };
       } catch (e) {
         if (e.message.includes('APIキー') || e.message.includes('レート制限') || e.message.includes('無効')) throw e;
-        pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
+        if (/internal error|high demand|overloaded/i.test(e.message)) {
+          serverErrorPages.push(i + 1);
+        } else {
+          pageErrors.push(`ページ ${i + 1} 要確認（2回失敗しスキップ）: ${e.message}`);
+        }
         return null;
       } finally {
         completed++;
@@ -1262,7 +1299,17 @@ async function handleCardUpload(event) {
     showProgress('card', abortFlag ? '中止しました' : '完了', 100);
     await sleep(400);
     hideProgress('card');
-    if (pageErrors.length) showError('card', pageErrors.join('\n'));
+    {
+      const errEl = document.getElementById('card-error');
+      let errHtml = '';
+      if (serverErrorPages.length) {
+        errHtml += `<div class="alert alert-warn">⚠ サーバーエラーのため以下のページが追加できませんでした。再アップロードが必要です。<br><strong>対象ページ：${serverErrorPages.sort((a,b)=>a-b).join(', ')}</strong></div>`;
+      }
+      if (pageErrors.length) {
+        errHtml += `<div class="alert alert-error">⚠ ${esc(pageErrors.join('\n')).replace(/\n/g, '<br>')}</div>`;
+      }
+      errEl.innerHTML = errHtml;
+    }
     renderCardTable();
     renderFilename('card', cardFileNames);
     updateCostBadge('card');
