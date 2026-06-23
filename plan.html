@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>プランニングTodo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f5f6fa; color: #2d3748; font-size: 14px; min-height: 100vh; }
+
+    .header { background: #1a1a2e; color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    .header h1 { font-size: 1.2rem; font-weight: 700; }
+    .header .now { margin-left: auto; font-size: 0.85rem; color: #a0aec0; }
+
+    .main { display: grid; grid-template-columns: 380px 1fr; gap: 0; height: calc(100vh - 56px); }
+
+    /* Left panel */
+    .left-panel { background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; }
+
+    .add-form { padding: 16px; border-bottom: 1px solid #e2e8f0; }
+    .add-form h2 { font-size: 0.9rem; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .form-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .form-row:last-child { margin-bottom: 0; }
+    .form-field { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .form-field label { font-size: 0.75rem; color: #718096; font-weight: 600; }
+    .form-field input, .form-field select { padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.875rem; color: #2d3748; background: #f7fafc; transition: border-color 0.15s; width: 100%; }
+    .form-field input:focus, .form-field select:focus { outline: none; border-color: #667eea; background: #fff; }
+    .time-inputs { display: flex; gap: 4px; align-items: center; }
+    .time-inputs input { width: 60px; }
+    .time-inputs span { color: #718096; font-size: 0.8rem; }
+    .btn-add { width: 100%; padding: 9px; background: #667eea; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; margin-top: 10px; transition: background 0.15s; }
+    .btn-add:hover { background: #5a67d8; }
+
+    .task-list-header { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; }
+    .task-list-header h2 { font-size: 0.9rem; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: 0.05em; }
+    .btn-schedule { padding: 6px 14px; background: #48bb78; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; transition: background 0.15s; }
+    .btn-schedule:hover { background: #38a169; }
+    .btn-clear { padding: 6px 10px; background: #fff; color: #e53e3e; border: 1px solid #e53e3e; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 600; transition: all 0.15s; margin-left: 6px; }
+    .btn-clear:hover { background: #fff5f5; }
+
+    .task-list { flex: 1; overflow-y: auto; padding: 8px; }
+    .task-item { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; cursor: grab; user-select: none; transition: all 0.15s; position: relative; }
+    .task-item:hover { border-color: #667eea; background: #fff; box-shadow: 0 2px 8px rgba(102,126,234,0.12); }
+    .task-item.dragging { opacity: 0.5; }
+    .task-item.drag-over { border-color: #667eea; border-style: dashed; }
+    .task-item.done { opacity: 0.5; }
+    .task-item.done .task-name { text-decoration: line-through; }
+    .task-header { display: flex; align-items: flex-start; gap: 8px; }
+    .task-check { width: 16px; height: 16px; border-radius: 4px; border: 2px solid #cbd5e0; cursor: pointer; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+    .task-check.checked { background: #48bb78; border-color: #48bb78; }
+    .task-check.checked::after { content: '✓'; color: #fff; font-size: 10px; font-weight: 700; }
+    .task-name { font-weight: 600; font-size: 0.9rem; flex: 1; line-height: 1.4; }
+    .task-delete { width: 20px; height: 20px; border: none; background: none; cursor: pointer; color: #cbd5e0; font-size: 16px; line-height: 1; padding: 0; transition: color 0.15s; flex-shrink: 0; }
+    .task-delete:hover { color: #e53e3e; }
+    .task-meta { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+    .badge { padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
+    .badge-time { background: #ebf4ff; color: #3182ce; }
+    .badge-deadline { background: #fff5f0; color: #c05621; }
+    .badge-priority-high { background: #fff5f5; color: #e53e3e; }
+    .badge-priority-mid { background: #fffaf0; color: #d69e2e; }
+    .badge-priority-low { background: #f0fff4; color: #38a169; }
+    .task-scheduled { font-size: 0.72rem; color: #667eea; font-weight: 600; margin-top: 4px; }
+
+    /* Settings bar */
+    .settings-bar { padding: 10px 16px; border-top: 1px solid #e2e8f0; background: #f7fafc; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .settings-bar label { font-size: 0.75rem; color: #718096; font-weight: 600; }
+    .settings-bar input[type=time] { padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 0.8rem; color: #2d3748; background: #fff; }
+    .settings-bar .setting-group { display: flex; align-items: center; gap: 6px; }
+
+    /* Right panel - Timeline */
+    .right-panel { overflow-y: auto; padding: 20px; background: #f5f6fa; }
+    .timeline-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+    .timeline-header h2 { font-size: 1rem; font-weight: 700; color: #2d3748; }
+    .timeline-nav { display: flex; gap: 6px; margin-left: auto; }
+    .btn-nav { padding: 5px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 5px; cursor: pointer; font-size: 0.8rem; color: #4a5568; transition: all 0.15s; }
+    .btn-nav:hover { background: #ebf8ff; border-color: #667eea; color: #667eea; }
+    .btn-today { padding: 5px 12px; background: #667eea; border: none; border-radius: 5px; cursor: pointer; font-size: 0.8rem; color: #fff; font-weight: 600; }
+
+    .day-block { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .day-label { font-size: 0.85rem; font-weight: 700; color: #4a5568; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; }
+    .day-label .today-badge { background: #667eea; color: #fff; font-size: 0.7rem; padding: 1px 7px; border-radius: 10px; }
+    .day-label .total-badge { margin-left: auto; font-size: 0.75rem; color: #a0aec0; font-weight: 500; }
+    .day-empty { color: #a0aec0; font-size: 0.85rem; text-align: center; padding: 16px 0; }
+
+    .slot { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f5f6fa; }
+    .slot:last-child { border-bottom: none; }
+    .slot-time { font-size: 0.75rem; color: #a0aec0; font-weight: 600; min-width: 80px; padding-top: 3px; }
+    .slot-bar-wrap { flex: 1; }
+    .slot-bar { border-radius: 6px; padding: 6px 10px; position: relative; }
+    .slot-bar-title { font-weight: 600; font-size: 0.85rem; }
+    .slot-bar-dur { font-size: 0.72rem; opacity: 0.75; margin-top: 2px; }
+    .color-0 { background: #ebf4ff; border-left: 3px solid #3182ce; }
+    .color-1 { background: #f0fff4; border-left: 3px solid #38a169; }
+    .color-2 { background: #fff5f0; border-left: 3px solid #e67e22; }
+    .color-3 { background: #faf5ff; border-left: 3px solid #805ad5; }
+    .color-4 { background: #fffaf0; border-left: 3px solid #d69e2e; }
+    .color-5 { background: #fff5f5; border-left: 3px solid #e53e3e; }
+    .color-6 { background: #e6fffa; border-left: 3px solid #2c7a7b; }
+    .color-7 { background: #fefce8; border-left: 3px solid #854d0e; }
+
+    .no-tasks-msg { text-align: center; padding: 60px 20px; color: #a0aec0; }
+    .no-tasks-msg .icon { font-size: 3rem; margin-bottom: 12px; }
+    .no-tasks-msg p { font-size: 0.9rem; line-height: 1.6; }
+
+    @media (max-width: 720px) {
+      .main { grid-template-columns: 1fr; height: auto; }
+      .left-panel { height: auto; }
+      .right-panel { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📋 プランニング Todo</h1>
+  <span class="now" id="now-display"></span>
+</div>
+
+<div class="main">
+  <!-- Left: task input & list -->
+  <div class="left-panel">
+    <div class="add-form">
+      <h2>タスク追加</h2>
+      <div class="form-row">
+        <div class="form-field" style="flex:2">
+          <label>タスク名</label>
+          <input type="text" id="inp-name" placeholder="例：企画書を書く" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label>所要時間</label>
+          <div class="time-inputs">
+            <input type="number" id="inp-h" placeholder="0" min="0" max="99" style="width:52px" />
+            <span>時間</span>
+            <input type="number" id="inp-m" placeholder="30" min="0" max="59" style="width:52px" />
+            <span>分</span>
+          </div>
+        </div>
+        <div class="form-field">
+          <label>優先度</label>
+          <select id="inp-priority">
+            <option value="high">🔴 高</option>
+            <option value="mid" selected>🟡 中</option>
+            <option value="low">🟢 低</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label>締切（任意）</label>
+          <input type="datetime-local" id="inp-deadline" />
+        </div>
+      </div>
+      <button class="btn-add" onclick="addTask()">+ 追加</button>
+    </div>
+
+    <div class="task-list-header">
+      <h2>タスク一覧 (<span id="task-count">0</span>)</h2>
+      <div style="display:flex;gap:4px">
+        <button class="btn-schedule" onclick="scheduleAll()">⚡ 自動スケジュール</button>
+        <button class="btn-clear" onclick="clearDone()" title="完了済みを削除">✓ 済削除</button>
+      </div>
+    </div>
+
+    <div class="task-list" id="task-list"></div>
+
+    <div class="settings-bar">
+      <div class="setting-group">
+        <label>作業開始</label>
+        <input type="time" id="work-start" value="09:00" onchange="scheduleAll()" />
+      </div>
+      <div class="setting-group">
+        <label>作業終了</label>
+        <input type="time" id="work-end" value="22:00" onchange="scheduleAll()" />
+      </div>
+      <div class="setting-group">
+        <label>昼休憩</label>
+        <input type="time" id="break-start" value="12:00" onchange="scheduleAll()" />
+        <span style="font-size:0.75rem;color:#a0aec0">〜</span>
+        <input type="time" id="break-end" value="13:00" onchange="scheduleAll()" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: timeline -->
+  <div class="right-panel" id="right-panel">
+    <div class="no-tasks-msg" id="empty-msg">
+      <div class="icon">📅</div>
+      <p>左からタスクを追加して<br>「⚡ 自動スケジュール」を押すと<br>スケジュールが組まれます</p>
+    </div>
+    <div id="timeline"></div>
+  </div>
+</div>
+
+<script>
+const NOW = new Date(2026, 5, 23, 21, 0, 0); // June 23 2026 21:00 JST
+
+let tasks = JSON.parse(localStorage.getItem('plan_tasks') || '[]');
+let dragSrcIdx = null;
+
+function save() {
+  localStorage.setItem('plan_tasks', JSON.stringify(tasks));
+}
+
+function fmtTime(d) {
+  return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDate(d) {
+  const days = ['日','月','火','水','木','金','土'];
+  return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
+}
+
+function fmtDur(min) {
+  if (min < 60) return `${min}分`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `${h}時間${m}分` : `${h}時間`;
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('now-display').textContent =
+    `現在: ${now.toLocaleString('ja-JP', { month:'numeric', day:'numeric', weekday:'short', hour:'2-digit', minute:'2-digit' })}`;
+}
+
+function addTask() {
+  const name = document.getElementById('inp-name').value.trim();
+  const h = parseInt(document.getElementById('inp-h').value) || 0;
+  const m = parseInt(document.getElementById('inp-m').value) || 0;
+  const priority = document.getElementById('inp-priority').value;
+  const deadline = document.getElementById('inp-deadline').value;
+
+  if (!name) { document.getElementById('inp-name').focus(); return; }
+  const dur = h * 60 + m;
+  if (dur <= 0) { alert('所要時間を入力してください'); return; }
+
+  tasks.push({ id: Date.now(), name, dur, priority, deadline: deadline || null, done: false, scheduledStart: null });
+  save();
+  renderTasks();
+  scheduleAll();
+
+  document.getElementById('inp-name').value = '';
+  document.getElementById('inp-h').value = '';
+  document.getElementById('inp-m').value = '';
+  document.getElementById('inp-name').focus();
+}
+
+function deleteTask(id) {
+  tasks = tasks.filter(t => t.id !== id);
+  save();
+  renderTasks();
+  scheduleAll();
+}
+
+function toggleDone(id) {
+  const t = tasks.find(t => t.id === id);
+  if (t) t.done = !t.done;
+  save();
+  renderTasks();
+  scheduleAll();
+}
+
+function clearDone() {
+  tasks = tasks.filter(t => !t.done);
+  save();
+  renderTasks();
+  scheduleAll();
+}
+
+function renderTasks() {
+  const list = document.getElementById('task-list');
+  document.getElementById('task-count').textContent = tasks.length;
+
+  if (tasks.length === 0) {
+    list.innerHTML = '<div style="text-align:center;color:#a0aec0;padding:32px 16px;font-size:0.85rem;">タスクがありません</div>';
+    return;
+  }
+
+  list.innerHTML = tasks.map((t, i) => {
+    const priBadge = t.priority === 'high' ? 'badge-priority-high' : t.priority === 'mid' ? 'badge-priority-mid' : 'badge-priority-low';
+    const priLabel = t.priority === 'high' ? '🔴 高' : t.priority === 'mid' ? '🟡 中' : '🟢 低';
+    const deadlineStr = t.deadline ? `<span class="badge badge-deadline">⏰ ${new Date(t.deadline).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>` : '';
+    const scheduledStr = t.scheduledStart ? `<div class="task-scheduled">📍 ${fmtDate(new Date(t.scheduledStart))} ${fmtTime(new Date(t.scheduledStart))} 〜 ${fmtTime(new Date(new Date(t.scheduledStart).getTime() + t.dur*60000))}</div>` : '';
+    return `
+      <div class="task-item ${t.done ? 'done' : ''}" draggable="true"
+        ondragstart="dragStart(${i})" ondragover="dragOver(event,${i})" ondrop="drop(event,${i})" ondragleave="dragLeave(${i})">
+        <div class="task-header">
+          <div class="task-check ${t.done ? 'checked' : ''}" onclick="toggleDone(${t.id})"></div>
+          <div class="task-name">${escHtml(t.name)}</div>
+          <button class="task-delete" onclick="deleteTask(${t.id})">×</button>
+        </div>
+        <div class="task-meta">
+          <span class="badge badge-time">🕐 ${fmtDur(t.dur)}</span>
+          <span class="badge ${priBadge}">${priLabel}</span>
+          ${deadlineStr}
+        </div>
+        ${scheduledStr}
+      </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Drag-to-reorder
+function dragStart(i) { dragSrcIdx = i; }
+function dragOver(e, i) {
+  e.preventDefault();
+  document.querySelectorAll('.task-item')[i].classList.add('drag-over');
+}
+function dragLeave(i) {
+  document.querySelectorAll('.task-item')[i].classList.remove('drag-over');
+}
+function drop(e, i) {
+  e.preventDefault();
+  if (dragSrcIdx === null || dragSrcIdx === i) { dragSrcIdx = null; return; }
+  const moved = tasks.splice(dragSrcIdx, 1)[0];
+  tasks.splice(i, 0, moved);
+  dragSrcIdx = null;
+  save();
+  renderTasks();
+  scheduleAll();
+}
+
+// Scheduling
+function getWorkMinutes(date, startH, startM, endH, endM, brkStartH, brkStartM, brkEndH, brkEndM) {
+  // Returns array of [startMin, endMin] segments (minutes from midnight)
+  const ws = startH * 60 + startM;
+  const we = endH * 60 + endM;
+  const bs = brkStartH * 60 + brkStartM;
+  const be = brkEndH * 60 + brkEndM;
+  if (bs >= be || bs <= ws || be >= we) return [[ws, we]];
+  return [[ws, bs], [be, we]];
+}
+
+function parseTimeInput(id) {
+  const val = document.getElementById(id).value || '00:00';
+  const [h, m] = val.split(':').map(Number);
+  return [h || 0, m || 0];
+}
+
+function scheduleAll() {
+  const [wsH, wsM] = parseTimeInput('work-start');
+  const [weH, weM] = parseTimeInput('work-end');
+  const [bsH, bsM] = parseTimeInput('break-start');
+  const [beH, beM] = parseTimeInput('break-end');
+
+  // Sort: done tasks last, then by priority, then by deadline
+  const priOrder = { high: 0, mid: 1, low: 2 };
+  const pending = tasks
+    .map((t, idx) => ({ ...t, origIdx: idx }))
+    .filter(t => !t.done);
+
+  pending.sort((a, b) => {
+    // deadline first if exists
+    if (a.deadline && b.deadline) return new Date(a.deadline) - new Date(b.deadline);
+    if (a.deadline) return -1;
+    if (b.deadline) return 1;
+    return priOrder[a.priority] - priOrder[b.priority];
+  });
+
+  // Build time slots starting from NOW
+  const startFrom = new Date(NOW);
+  // Clamp to work hours for today
+  const todayWorkStart = new Date(startFrom);
+  todayWorkStart.setHours(wsH, wsM, 0, 0);
+
+  // Cursor: first available minute (as Date)
+  let cursor = new Date(startFrom);
+
+  // Advance cursor to work hours if before work start today
+  if (cursor < todayWorkStart) cursor = new Date(todayWorkStart);
+
+  // Helper: advance cursor past end-of-day to next day's work start
+  function nextWorkDay(d) {
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    next.setHours(wsH, wsM, 0, 0);
+    return next;
+  }
+
+  // Helper: advance cursor past break if needed
+  function advancePastBreak(d) {
+    const brkStart = new Date(d);
+    brkStart.setHours(bsH, bsM, 0, 0);
+    const brkEnd = new Date(d);
+    brkEnd.setHours(beH, beM, 0, 0);
+    if (d >= brkStart && d < brkEnd) return new Date(brkEnd);
+    return d;
+  }
+
+  // Helper: how many minutes available from cursor until end of work day (excl break)
+  function availableUntilEndOfDay(cur) {
+    const endOfDay = new Date(cur);
+    endOfDay.setHours(weH, weM, 0, 0);
+    if (cur >= endOfDay) return 0;
+    const brkStart = new Date(cur);
+    brkStart.setHours(bsH, bsM, 0, 0);
+    const brkEnd = new Date(cur);
+    brkEnd.setHours(beH, beM, 0, 0);
+    // break applies?
+    if (bsH * 60 + bsM < beH * 60 + beM && cur < brkEnd && endOfDay > brkStart) {
+      // subtract break overlap
+      const brkOverlap = Math.max(0, Math.min(brkEnd, endOfDay) - Math.max(brkStart, cur));
+      return (endOfDay - cur) / 60000 - brkOverlap / 60000;
+    }
+    return (endOfDay - cur) / 60000;
+  }
+
+  // Find valid start time for a task of `dur` minutes starting from cursor
+  function findSlot(dur, cur) {
+    let c = new Date(cur);
+    let safety = 0;
+    while (safety++ < 1000) {
+      // Ensure within work hours
+      const todayEnd = new Date(c);
+      todayEnd.setHours(weH, weM, 0, 0);
+      const todayStart = new Date(c);
+      todayStart.setHours(wsH, wsM, 0, 0);
+
+      if (c >= todayEnd) { c = nextWorkDay(c); continue; }
+      if (c < todayStart) { c = new Date(todayStart); continue; }
+
+      // Advance past break
+      c = advancePastBreak(c);
+
+      // Recalc today end in case date changed
+      const endOfDay = new Date(c); endOfDay.setHours(weH, weM, 0, 0);
+      if (c >= endOfDay) { c = nextWorkDay(c); continue; }
+
+      // Check if task fits before end of work day
+      const avail = availableUntilEndOfDay(c);
+      if (avail >= dur) {
+        // But also check break doesn't split the task
+        const brkStart = new Date(c); brkStart.setHours(bsH, bsM, 0, 0);
+        const brkEnd = new Date(c); brkEnd.setHours(beH, beM, 0, 0);
+        const taskEnd = new Date(c.getTime() + dur * 60000);
+        if (bsH * 60 + bsM < beH * 60 + beM && c < brkStart && taskEnd > brkStart) {
+          // task would cross break — schedule after break
+          c = new Date(brkEnd);
+          continue;
+        }
+        return new Date(c);
+      } else {
+        c = nextWorkDay(c);
+        continue;
+      }
+    }
+    return new Date(c);
+  }
+
+  // Assign slots
+  pending.forEach(pt => {
+    const slot = findSlot(pt.dur, cursor);
+    const taskRef = tasks[pt.origIdx];
+    taskRef.scheduledStart = slot.toISOString();
+    // Advance cursor
+    const brkStart = new Date(slot); brkStart.setHours(bsH, bsM, 0, 0);
+    const brkEnd = new Date(slot); brkEnd.setHours(beH, beM, 0, 0);
+    let endTime = new Date(slot.getTime() + pt.dur * 60000);
+    // If end crosses break, push past break
+    if (bsH * 60 + bsM < beH * 60 + beM && slot < brkEnd && endTime > brkStart) {
+      endTime = new Date(brkEnd.getTime() + pt.dur * 60000);
+    }
+    cursor = endTime;
+  });
+
+  save();
+  renderTasks();
+  renderTimeline();
+}
+
+function renderTimeline() {
+  const timeline = document.getElementById('timeline');
+  const emptyMsg = document.getElementById('empty-msg');
+
+  const scheduled = tasks.filter(t => t.scheduledStart && !t.done);
+  if (tasks.length === 0) {
+    emptyMsg.style.display = 'block';
+    timeline.innerHTML = '';
+    return;
+  }
+  emptyMsg.style.display = 'none';
+
+  // Group by day
+  const byDay = {};
+  tasks.filter(t => t.scheduledStart).forEach((t, i) => {
+    const d = new Date(t.scheduledStart);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (!byDay[key]) byDay[key] = { date: d, slots: [] };
+    byDay[key].slots.push({ ...t, colorIdx: i % 8 });
+  });
+
+  // Also show done tasks
+  const sortedDays = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b));
+
+  if (sortedDays.length === 0) {
+    timeline.innerHTML = '<div style="text-align:center;color:#a0aec0;padding:32px;font-size:0.85rem;">タスクを追加して「⚡ 自動スケジュール」を押してください</div>';
+    return;
+  }
+
+  const today = new Date(NOW);
+  const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+
+  timeline.innerHTML = sortedDays.map(([key, { date, slots }]) => {
+    const isToday = key === todayKey;
+    slots.sort((a, b) => new Date(a.scheduledStart) - new Date(b.scheduledStart));
+    const totalMin = slots.reduce((s, t) => s + t.dur, 0);
+
+    const slotsHtml = slots.map(t => {
+      const s = new Date(t.scheduledStart);
+      const e = new Date(s.getTime() + t.dur * 60000);
+      const doneStyle = t.done ? 'opacity:0.45;' : '';
+      return `
+        <div class="slot">
+          <div class="slot-time">${fmtTime(s)} 〜 ${fmtTime(e)}</div>
+          <div class="slot-bar-wrap">
+            <div class="slot-bar color-${t.colorIdx}" style="${doneStyle}">
+              <div class="slot-bar-title">${t.done ? '✓ ' : ''}${escHtml(t.name)}</div>
+              <div class="slot-bar-dur">${fmtDur(t.dur)} ${t.priority === 'high' ? '🔴' : t.priority === 'mid' ? '🟡' : '🟢'}</div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="day-block">
+        <div class="day-label">
+          ${fmtDate(date)}
+          ${isToday ? '<span class="today-badge">TODAY</span>' : ''}
+          <span class="total-badge">合計 ${fmtDur(totalMin)}</span>
+        </div>
+        ${slotsHtml}
+      </div>`;
+  }).join('');
+}
+
+// Enter key on task name
+document.getElementById('inp-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addTask();
+});
+
+// Init
+updateClock();
+setInterval(updateClock, 30000);
+renderTasks();
+if (tasks.length > 0) scheduleAll();
+</script>
+</body>
+</html>
